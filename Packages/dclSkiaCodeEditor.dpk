@@ -1,15 +1,6 @@
 package dclSkiaCodeEditor;
 
-{ Design-time package for TSkiaCodeEditor.
-
-  Install THIS one in the IDE (Component > Install Packages, or right-click >
-  Install after opening it). It contains nothing but the Register procedure and
-  requires the runtime package, which holds the actual component code.
-
-  Design-time packages are loaded by the IDE, which is a 32-bit process: build
-  this for Win32 regardless of what your application targets. }
-
-(* No $R *.res directive -- see SkiaCodeEditor.dpk. *)
+{$R *.res}
 {$IFDEF IMPLICITBUILDING This IFDEF should not be used by users}
 {$ALIGN 8}
 {$ASSERTIONS ON}
@@ -22,8 +13,8 @@ package dclSkiaCodeEditor;
 {$LONGSTRINGS ON}
 {$OPENSTRINGS ON}
 {$OPTIMIZATION OFF}
-{$OVERFLOWCHECKS OFF}
-{$RANGECHECKS OFF}
+{$OVERFLOWCHECKS ON}
+{$RANGECHECKS ON}
 {$REFERENCEINFO ON}
 {$SAFEDIVIDE OFF}
 {$STACKFRAMES ON}

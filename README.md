@@ -48,16 +48,18 @@ metrics on every platform. Text layout never touches `TTextLayout`,
 
 ## Installation
 
-1. Open `Packages\SkiaCodeEditor.dpk` and **Build** it (this is the runtime
-   package; build it for every platform you target).
-2. Open `Packages\dclSkiaCodeEditor.dpk` and **Install** it. Design-time
+1. Open the project group `Packages\RhoFMXEditorGroup.groupproj` (or the two
+   `.dpk` files individually).
+2. **Build** `SkiaCodeEditor` (the runtime package) for every platform you
+   target.
+3. **Install** `dclSkiaCodeEditor` (the design-time package). Design-time
    packages are loaded by the IDE, which is a 32-bit process — build this one
    for **Win32** regardless of what your application targets.
-3. Add the `Source` folder to your project's *Library path* (or its unit search
+4. Add the `Source` folder to your project's *Library path* (or its unit search
    path) so the compiler can find the units.
 
-`TSkiaCodeEditor` then appears on the **Skia** palette page, for FireMonkey
-forms only.
+`TSkiaCodeEditor` then appears on the **Rhody Controls** palette page, for
+FireMonkey forms.
 
 You can also skip packages entirely and just add the four units from `Source`
 to your project — the component works fine constructed in code.
@@ -248,9 +250,9 @@ integer to encode your own state (e.g. "inside a block comment").
 
 | Property | Default | Notes |
 |---|---|---|
-| `FontFamily: string` | `'Consolas'` | Live: rebuilds metrics and re-lays out. |
+| `FontFamily: string` | per-platform | `Consolas` on Windows, `Menlo` on macOS, `DejaVu Sans Mono` elsewhere. Live: rebuilds metrics and re-lays out. |
 | `FontSize: Single` | `13` | Live. |
-| `Monospace: Boolean` | `True` | Enables the integer-advance fast path. Set `False` for proportional fonts. |
+| `Monospace: Boolean` | `True` | Requests the integer-advance fast path. It is used **only if the face really is fixed-pitch** — see below. |
 | `GutterVisible: Boolean` | `True` | Off ⇒ text starts at x = 0. The gutter auto-sizes to the widest line number. |
 | `WordWrap: Boolean` | `False` | On ⇒ hides the horizontal scrollbar. |
 | `BackgroundColor` | white | |
@@ -264,6 +266,15 @@ integer to encode your own state (e.g. "inside a block comment").
 
 All colour properties merely repaint. Font properties rebuild Skia metrics.
 Everything is a live setter — no `BeginUpdate`/`EndUpdate` needed.
+
+> **`Monospace` is a request, not an assertion.** Skia does not fail on a
+> missing font family — it silently substitutes a default, proportional
+> typeface. Taking the fixed-advance fast path against such a face renders text
+> correctly but drifts the caret further from the glyph the further right you
+> go. So `RebuildFontMetrics` measures `'0'`, `'W'` and `'i'`, and only uses the
+> fast path when their advances agree. Set a proportional `FontFamily` (or name
+> a font that isn't installed) and the editor quietly falls back to
+> per-character measurement — slower, but always correct.
 
 ## Behaviour
 
@@ -373,6 +384,15 @@ end;
 - `uSyntaxHighlighter.pas` — `TSimpleHighlighter`, a configurable tokenizer.
 - `uFindBar.pas` — `TFindBar`, the built-in docked find/replace bar.
 - `uSkiaCodeEditorReg.pas` — design-time registration only.
+
+## Developing the component
+
+Open `Packages\RhoFMXEditorGroup.groupproj` — a project group of the runtime
+package, the design package, and the demo. Edit the component units and press
+F9 on the demo: because the demo links `Source` statically (via its unit search
+path), your changes recompile straight into it, with no package rebuild. Rebuild
+and reinstall the design package only when you need refreshed *design-time*
+behaviour (e.g. a newly published property in the Object Inspector).
 
 ## Design notes
 

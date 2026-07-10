@@ -1,0 +1,60 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{D54CF3E2-73ED-44E7-A9D2-129EF8105C69}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="SkiaCodeEditor.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="dclSkiaCodeEditor.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="..\Demo\SkiaCodeEditorDemo.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="SkiaCodeEditor">
+        <MSBuild Projects="SkiaCodeEditor.dproj"/>
+    </Target>
+    <Target Name="SkiaCodeEditor:Clean">
+        <MSBuild Projects="SkiaCodeEditor.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="SkiaCodeEditor:Make">
+        <MSBuild Projects="SkiaCodeEditor.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="dclSkiaCodeEditor">
+        <MSBuild Projects="dclSkiaCodeEditor.dproj"/>
+    </Target>
+    <Target Name="dclSkiaCodeEditor:Clean">
+        <MSBuild Projects="dclSkiaCodeEditor.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="dclSkiaCodeEditor:Make">
+        <MSBuild Projects="dclSkiaCodeEditor.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="SkiaCodeEditorDemo">
+        <MSBuild Projects="..\Demo\SkiaCodeEditorDemo.dproj"/>
+    </Target>
+    <Target Name="SkiaCodeEditorDemo:Clean">
+        <MSBuild Projects="..\Demo\SkiaCodeEditorDemo.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="SkiaCodeEditorDemo:Make">
+        <MSBuild Projects="..\Demo\SkiaCodeEditorDemo.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="SkiaCodeEditor;dclSkiaCodeEditor;SkiaCodeEditorDemo"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="SkiaCodeEditor:Clean;dclSkiaCodeEditor:Clean;SkiaCodeEditorDemo:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="SkiaCodeEditor:Make;dclSkiaCodeEditor:Make;SkiaCodeEditorDemo:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>

@@ -33,4 +33,11 @@ object frmMain: TfrmMain
       end
     end
   end
+  object Layout1: TLayout
+    Align = Top
+    Size.Width = 954.000000000000000000
+    Size.Height = 50.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 2
+  end
 end

@@ -28,15 +28,20 @@ divergence we're escaping.
 
 Restructured as a redistributable component (MIT, see `LICENSE` / `README.md`):
 
-- `Source/` — the four component units + `uSkiaCodeEditorReg.pas` (Register only).
+- `Source/` — the four component units + `uSkiaCodeEditorReg.pas` (`Register`
+  only; registers on the **`Rhody Controls`** palette page — the user's `Rho*`
+  house convention for their component set).
 - `Packages/` — `SkiaCodeEditor.dpk` (runtime, `{$RUNONLY}`) and
   `dclSkiaCodeEditor.dpk` (design-time, `{$DESIGNONLY}`, requires the runtime
-  package + `designide`). Neither has a `{$R *.res}`, so both build from a clean
-  clone. The design-time package is **Win32** — the IDE is a 32-bit process — and
-  needs a Win32 build of the runtime package first.
+  package + `designide`), each with an IDE-generated `.dproj`. The `.dpk`s carry
+  no `{$R *.res}`, so a `dcc` build works from a clean clone. The design-time
+  package is **Win32** — the IDE is a 32-bit process — and needs a Win32 build of
+  the runtime package first. `RhoFMXEditorGroup.groupproj` ties both packages and
+  the demo together for IDE development.
 - `Demo/` — `SkiaCodeEditorDemo.dproj` (was `NewMemoFMXProject`). It finds the
   component through `DCC_UnitSearchPath = ..\Source`, not by listing the units,
-  so it compiles the way a consumer's project would.
+  so it compiles the way a consumer's project would (and F9 recompiles edited
+  component source straight in).
 
 **Design-time gotchas** (both already handled; don't regress them):
 - All designer-facing properties are `published`. `TControl` keeps
@@ -230,6 +235,20 @@ Restructured as a redistributable component (MIT, see `LICENSE` / `README.md`):
    first row; continuation rows get a blank gutter.
 
 ### Metrics / geometry
+- **Font family is per-platform** (`DefaultFontFamily`): Consolas on Windows,
+  **Menlo on macOS**, DejaVu Sans Mono elsewhere. `TSkTypeface.MakeFromName`
+  does **not** fail on a missing family — it silently returns a default
+  *proportional* typeface, so hardcoding Consolas made macOS take the monospace
+  fast path against a proportional face.
+- **`IsFixedPitch` guards the fast path.** `RebuildFontMetrics` measures `'0'`,
+  `'W'` and `'i'`; only if all three advances match does it set `FCharWidth`
+  (> 0 = "use `col * FCharWidth`"). Otherwise `FCharWidth := 0` and everything
+  degrades to correct-but-slower per-character measurement. Symptom it prevents:
+  text renders fine but the caret drifts further from the glyph the further
+  right you go, clicks land on the wrong column, and wrap breaks early.
+  **`FCharWidth` is therefore 0 on proportional faces** — never use it as a
+  margin or step; use `FDigitWidth` (always valid) as `UpdateContentSize`,
+  `UpdateScrollBars`, `EnsureCaretVisible` and `PaintSelection` now do.
 - `RebuildFontMetrics` builds `FSkTypeface`/`FSkFont`; line height and
   (monospace) char advance derive from Skia `TSkFontMetrics`. The `FontSize` /
   `FontFamily` / `Monospace` properties are **live** — their setters call
@@ -357,7 +376,15 @@ Done:
 
 Delphi 13 = RAD Studio 37.0. Skia enabled (`System.Skia` + `FMX.Skia`).
 
-**Demo** (from `Demo/`; `rsvars.bat` works even non-interactively):
+**In the IDE:** open `Packages/RhoFMXEditorGroup.groupproj` — a project group of
+the runtime package, the design package, and the demo (in that order, which is
+also the required build order: the design package needs the runtime `.dcp`).
+The component registers on the **`Rhody Controls`** palette page. Editing the
+component units and pressing F9 on the demo recompiles them straight in (the
+demo links `..\Source` statically, so no package rebuild is needed for the dev
+loop; reinstall the design package only to refresh design-time behaviour).
+
+**Command line — demo** (from `Demo/`; `rsvars.bat` works even non-interactively):
 
 ```
 & "C:\Program Files (x86)\Embarcadero\Studio\37.0\bin\rsvars.bat"
@@ -366,17 +393,18 @@ msbuild SkiaCodeEditorDemo.dproj /t:Build /p:Config=Debug /p:Platform=Win64
 
 Output: `Demo\Win64\Debug\SkiaCodeEditorDemo.exe`.
 
-**Packages** have no `.dproj` (the IDE generates one on first open), so build
-them with `dcc` directly from `Packages/`:
+**Command line — packages** now have IDE-generated `.dproj` files, so msbuild
+them (Win32 — the IDE loads only 32-bit design packages; runtime package first):
 
 ```
-dcc64 -B SkiaCodeEditor.dpk -U"<BDS>\lib\win64\release" -NU.\dcu64 -LE.\bpl -LN.\dcp
-dcc32 -B SkiaCodeEditor.dpk -U"<BDS>\lib\win32\release" -NU.\dcu32 -LE.\bpl32 -LN.\dcp32
-dcc32 -B dclSkiaCodeEditor.dpk -U"<BDS>\lib\win32\release;.\dcp32" -NU.\dcu32 -LE.\bpl32 -LN.\dcp32
+msbuild Packages\SkiaCodeEditor.dproj    /t:Build /p:Config=Debug /p:Platform=Win32
+msbuild Packages\dclSkiaCodeEditor.dproj /t:Build /p:Config=Debug /p:Platform=Win32
 ```
 
-(the Win32 runtime build must come before the design-time package, which
-requires its `.dcp`).
+⚠️ A package msbuild fails with `F2039: Could not create output file ...bpl`
+when the **IDE is running with the design package installed** — it holds the
+`.bpl` open. That is a file lock, not a project error; close the IDE (or
+uninstall the package) to build from the shell.
 
 ## Working notes (read before changing things)
 

@@ -10,7 +10,7 @@ uses
   FMX.Types,
   FMX.Controls, FMX.Forms, FMX.Graphics, FMX.Dialogs,
   FMX.StdCtrls, FMX.Objects, FMX.Edit, FMX.DialogService,
-  uSkiaCodeEditor, FMX.Menus, IOUtils, uLipsumGenerator;
+  uSkiaCodeEditor, FMX.Menus, IOUtils, uLipsumGenerator, FMX.Layouts;
 
 type
   TfrmMain = class(TForm)
@@ -19,6 +19,7 @@ type
     mnuLoad1: TMenuItem;
     mnuCreate: TMenuItem;
     mnuOpen: TMenuItem;
+    Layout1: TLayout;
     procedure FormCreate(Sender: TObject);
     procedure FormShow(Sender: TObject);
     procedure mnuLoad1Click(Sender: TObject);

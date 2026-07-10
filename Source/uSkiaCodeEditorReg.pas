@@ -24,8 +24,8 @@ begin
   // GroupDescendentsWith ties the component to the FireMonkey object tree, so
   // the IDE offers it on FMX forms and hides it from VCL ones. Without it the
   // component shows up on both palettes and can be dropped where it can't work.
-  GroupDescendentsWith(TSkiaCodeEditor, FMX.Types.TFmxObject);
-  RegisterComponents('Skia', [TSkiaCodeEditor]);
+  //GroupDescendentsWith(TSkiaCodeEditor, FMX.Types.TFmxObject);
+  RegisterComponents('Rhody Controls', [TSkiaCodeEditor]);
 end;
 
 end.

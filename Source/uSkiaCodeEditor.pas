@@ -82,6 +82,16 @@ const
   mkTint     = uCodeEditorTypes.mkTint;
   mkSquiggle = uCodeEditorTypes.mkSquiggle;
 
+  // Default monospaced face per platform. Consolas does not exist on macOS, and
+  // TSkTypeface.MakeFromName does NOT fail on a missing family -- it silently
+  // returns a default (proportional) typeface. Menlo ships on every Mac; SF Mono
+  // is not reliably available to non-terminal apps.
+  DefaultFontFamily =
+    {$IF DEFINED(MACOS)}   'Menlo'
+    {$ELSEIF DEFINED(MSWINDOWS)} 'Consolas'
+    {$ELSE}                'DejaVu Sans Mono'
+    {$ENDIF};
+
 // Tooltip builders, re-exported for the same reason (a uses-clause convenience).
 // Deliberately NOT inline: an inline function whose body lives in another unit
 // makes every host emit H2443 unless it also uses uCodeEditorTypes, which is
@@ -190,6 +200,7 @@ type
     FOnRequestFind: TNotifyEvent;      // user pressed Ctrl/Cmd+F
 
     procedure RebuildFontMetrics;
+    function IsFixedPitch: Boolean;
     procedure UpdateContentSize;
     procedure UpdateScrollBars;
     procedure SetScrollPos(AX, AY: Single);
@@ -564,7 +575,7 @@ begin
   FTooltipTextColor   := $FFF0F0F0;
   FTooltipBorderColor := $FF6E6E70;
 
-  FFontFamily := 'Consolas';   // TODO: platform default (SF Mono/Menlo on mac)
+  FFontFamily := DefaultFontFamily;
   FFontSize := 13;
   FMonospace := True;
   FGutterVisible := True;
@@ -684,11 +695,33 @@ begin
     TSkTypeface.MakeFromName(FFontFamily, TSkFontStyle.Bold), FFontSize);
   FSkFont.GetMetrics(Metrics);
   FLineHeight := Ceil((-Metrics.Ascent) + Metrics.Descent + Metrics.Leading);
-  FDigitWidth := FSkFont.MeasureText('0');
-  if FMonospace then
-    FCharWidth := FDigitWidth               // advance for a representative glyph
-  else
-    FCharWidth := 0;                          // 0 => measure per run
+  FDigitWidth := FSkFont.MeasureText('0');   // a layout metric; always valid
+
+  // FCharWidth > 0 is the monospace fast path: every geometry routine then
+  // computes x as col * FCharWidth instead of measuring. Only take it if the
+  // face really IS fixed-pitch. MakeFromName silently substitutes a default
+  // (proportional) typeface for a missing family -- e.g. 'Consolas' on macOS --
+  // and trusting Monospace there would drift the caret further from the glyph
+  // the further right you go, while the text still rendered correctly. Zeroing
+  // FCharWidth degrades to correct-but-slower per-character measurement.
+  FCharWidth := 0;                           // 0 => measure per run
+  if FMonospace and IsFixedPitch then
+    FCharWidth := FDigitWidth;
+end;
+
+function TSkiaCodeEditor.IsFixedPitch: Boolean;
+const
+  Tolerance = 0.01;   // px; identical advances differ only by float noise
+var
+  W0, WW, WI: Single;
+begin
+  // Compare a digit, a wide glyph and a narrow one. A fixed-pitch face gives
+  // all three the same advance; any proportional face separates 'W' from 'i'
+  // by a wide margin.
+  W0 := FSkFont.MeasureText('0');
+  WW := FSkFont.MeasureText('W');
+  WI := FSkFont.MeasureText('i');
+  Result := (Abs(WW - W0) < Tolerance) and (Abs(WI - W0) < Tolerance);
 end;
 
 procedure TSkiaCodeEditor.ApplyFontChange;
@@ -1942,7 +1975,7 @@ begin
     if ScreenX < FGutterWidth then
       NewX := CaretX - FGutterWidth
     else if ScreenX > VW then
-      NewX := CaretX - VW + FCharWidth;
+      NewX := CaretX - VW + FDigitWidth;   // FCharWidth is 0 when proportional
   end;
 
   SetScrollPos(NewX, NewY);
@@ -2012,7 +2045,8 @@ begin
     FContentW := 0;
   end
   else
-    FContentW := FGutterWidth + FMaxLineWidth + FCharWidth * 2;  // caret margin
+    // FDigitWidth, not FCharWidth: the latter is 0 on a proportional face.
+    FContentW := FGutterWidth + FMaxLineWidth + FDigitWidth * 2;  // caret margin
   FContentH := FTotalRows * FLineHeight;
   UpdateScrollBars;
 end;
@@ -2043,7 +2077,7 @@ begin
   FHScroll.Min := 0;
   FHScroll.Max := Max(FContentW, VW);
   FHScroll.ViewportSize := VW;
-  FHScroll.SmallChange := FCharWidth * 4;
+  FHScroll.SmallChange := FDigitWidth * 4;   // FCharWidth is 0 when proportional
   FHScroll.Value := FScrollX;
 end;
 
@@ -2502,7 +2536,7 @@ begin
     X1 := FGutterWidth + MeasureRange(FLines[Li].Text, RS, StartCol) - FScrollX;
     X2 := FGutterWidth + MeasureRange(FLines[Li].Text, RS, EndCol) - FScrollX;
     if WantNewlineMark then
-      X2 := X2 + Max(FCharWidth, FDigitWidth);
+      X2 := X2 + FDigitWidth;
     // Never paint under the sticky gutter.
     X1 := Max(X1, FGutterWidth);
     X2 := Max(X2, FGutterWidth);
