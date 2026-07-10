@@ -1,0 +1,36 @@
+object frmMain: TfrmMain
+  Left = 0
+  Top = 0
+  Caption = 'Skia Memo Control'
+  ClientHeight = 686
+  ClientWidth = 954
+  Position = MainFormCenter
+  FormFactor.Width = 320
+  FormFactor.Height = 480
+  FormFactor.Devices = [Desktop]
+  OnCreate = FormCreate
+  OnShow = FormShow
+  DesignerMasterStyle = 0
+  object MainMenu1: TMainMenu
+    Left = 800
+    Top = 40
+    object Load: TMenuItem
+      Text = 'Load'
+      object mnuOpen: TMenuItem
+        Locked = True
+        Text = 'Open'
+        OnClick = mnuOpenClick
+      end
+      object mnuLoad1: TMenuItem
+        Locked = True
+        Text = 'Load 1'
+        OnClick = mnuLoad1Click
+      end
+      object mnuCreate: TMenuItem
+        Locked = True
+        Text = 'Create'
+        OnClick = mnuCreateClick
+      end
+    end
+  end
+end

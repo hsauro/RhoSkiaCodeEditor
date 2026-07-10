@@ -1,0 +1,35 @@
+# Delphi build output
+*.dcu
+*.dcp
+*.bpl
+*.exe
+*.dll
+*.map
+*.drc
+*.identcache
+*.local
+*.stat
+*.tvsconfig
+*.rsm
+*.~*
+
+# Per-platform output folders
+Win32/
+Win64/
+OSX64/
+OSXARM64/
+Android/
+Android64/
+iOSDevice64/
+iOSSimARM64/
+
+# Package build output
+Packages/dcu*/
+Packages/bpl*/
+Packages/dcp*/
+
+# IDE state
+__history/
+__recovery/
+*.dproj.local
+*.dsk

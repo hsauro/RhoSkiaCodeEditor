@@ -1,0 +1,53 @@
+package SkiaCodeEditor;
+
+{ Runtime package for TSkiaCodeEditor.
+
+  Contains the component units only -- no Register, so an application can link
+  against this without pulling in the IDE's designide package.
+
+  Skia ships with RAD Studio, so Skia.Package.RTL / Skia.Package.FMX are the
+  stock packages; there is no external Skia4Delphi dependency. }
+
+(* No $R *.res directive: a package .res carries only version info, and omitting
+   it keeps the repo buildable straight from a clone without an IDE-generated
+   file. Add it back if you want version resources on the .bpl. *)
+{$IFDEF IMPLICITBUILDING This IFDEF should not be used by users}
+{$ALIGN 8}
+{$ASSERTIONS ON}
+{$BOOLEVAL OFF}
+{$DEBUGINFO OFF}
+{$EXTENDEDSYNTAX ON}
+{$IMPORTEDDATA ON}
+{$IOCHECKS ON}
+{$LOCALSYMBOLS ON}
+{$LONGSTRINGS ON}
+{$OPENSTRINGS ON}
+{$OPTIMIZATION OFF}
+{$OVERFLOWCHECKS OFF}
+{$RANGECHECKS OFF}
+{$REFERENCEINFO ON}
+{$SAFEDIVIDE OFF}
+{$STACKFRAMES ON}
+{$TYPEDADDRESS OFF}
+{$VARSTRINGCHECKS ON}
+{$WRITEABLECONST OFF}
+{$MINENUMSIZE 1}
+{$IMAGEBASE $400000}
+{$DEFINE DEBUG}
+{$ENDIF IMPLICITBUILDING}
+{$RUNONLY}
+{$IMPLICITBUILD ON}
+
+requires
+  rtl,
+  fmx,
+  Skia.Package.RTL,
+  Skia.Package.FMX;
+
+contains
+  uCodeEditorTypes in '..\Source\uCodeEditorTypes.pas',
+  uSkiaCodeEditor in '..\Source\uSkiaCodeEditor.pas',
+  uSyntaxHighlighter in '..\Source\uSyntaxHighlighter.pas',
+  uFindBar in '..\Source\uFindBar.pas';
+
+end.
