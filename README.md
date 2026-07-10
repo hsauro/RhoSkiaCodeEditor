@@ -39,7 +39,9 @@ metrics on every platform. Text layout never touches `TTextLayout`,
 
 ## Requirements
 
-- RAD Studio / Delphi **12 or later** (developed against Delphi 13 / BDS 37.0).
+- RAD Studio / Delphi **13** (BDS 37.0) — developed and built against this.
+  It should work on Delphi 12, the first version to bundle Skia, but that has
+  not been tested.
 - **Skia**, which ships with RAD Studio — no external Skia4Delphi dependency.
   Enable it for your application: *Project > Options > Application > Skia* →
   **Enable Skia**.
@@ -80,11 +82,228 @@ Editor.SetText(TFile.ReadAllText('model.txt'));
 Ctrl/Cmd+F opens the built-in find bar; Ctrl/Cmd+G fires `OnRequestGotoLine` so
 the host can prompt for a line number (the control never pops dialogs itself).
 
-## Showing parser errors
+---
 
-Markers are purely visual — they never move the caret or the selection, so you
-can annotate a document without disturbing the user. All line and column
-arguments are **1-based**, matching `CaretLine` / `CaretColumn` / `GoToLine`.
+# API reference
+
+Two conventions run through the whole API:
+
+- **Lines and columns are 1-based** in everything public — `CaretLine`,
+  `GoToLine`, `AddMarker`, `LineText`. (Internally they are 0-based; the
+  boundary converts.)
+- **The control never pops dialogs.** Where a UI is needed it either ships one
+  you can turn off (`BuiltInFindUI`) or fires an event for you to handle
+  (`OnRequestGotoLine`).
+
+## Document text
+
+| Member | Description |
+|---|---|
+| `procedure SetText(const AText: string)` | Replace the whole document. Normalises CRLF/CR to LF. Resets caret, clears undo history and markers. |
+| `function GetText: string` | The whole document, lines joined with `#10`. |
+| `function LineCount: Integer` | Number of logical lines (not visual rows). |
+| `function LineText(ALine: Integer): string` | Text of one line, 1-based. `''` if out of range. |
+
+## Navigation
+
+| Member | Description |
+|---|---|
+| `procedure GoToLine(ALine: Integer)` | 1-based. Caret to the line's start, scrolled roughly centred. Clamped to the document. |
+| `property CaretLine: Integer` | Read-only, 1-based. |
+| `property CaretColumn: Integer` | Read-only, 1-based. |
+| `property SelText: string` | Read-only. The current selection, `''` if none. |
+| `event OnCaretChange` | Fires after any caret move **or** edit. Drive a status bar off this. |
+
+## Undo / redo
+
+| Member | Description |
+|---|---|
+| `procedure Undo` / `procedure Redo` | One step. Consecutive typed characters coalesce into a single step; any caret move or click breaks the run. |
+| `function CanUndo: Boolean` / `function CanRedo: Boolean` | For enabling menu items. |
+
+History is bounded at 1000 steps and is cleared by `SetText`. Every text
+mutation — typing, paste, `ReplaceAll` — goes through one choke point, so
+everything is undoable, and `ReplaceAll` is a *single* step.
+
+## Find and replace
+
+Matches are **single-line** (the search string never contains a newline).
+
+```pascal
+type TFindOption  = (foMatchCase, foWholeWord, foWrapAround);
+     TFindOptions = set of TFindOption;
+```
+
+| Member | Description |
+|---|---|
+| `function FindNext(const ASearch: string; AOptions: TFindOptions = [foWrapAround]): Boolean` | Selects and centres the next match after the caret/selection. |
+| `function FindPrevious(...)` | Same, backwards. |
+| `function ReplaceCurrent(const ASearch, AReplace: string; AOptions = [foWrapAround]): Boolean` | Replaces the selection if it *is* a match, then advances to the next one. |
+| `function ReplaceAll(const ASearch, AReplace: string; AOptions: TFindOptions = []): Integer` | Returns the count. One undo step. |
+| `procedure HighlightMatches(const ASearch: string; AOptions: TFindOptions = [])` | Tint every visible occurrence. `FindNext`/`FindPrevious` call this for you. |
+| `procedure ClearHighlightMatches` | Drop the highlights. Esc does this too. |
+
+The match you are *on* is painted in `FindMatchColor`; the others in the weaker
+`FindHighlightColor`. Matches are located per **visible line** at paint time, so
+highlight-all costs nothing on a large document.
+
+**Custom find UI:** set `BuiltInFindUI := False` and handle `OnRequestFind`
+(fired on Ctrl/Cmd+F). Drive the methods above from your own controls, and call
+`HighlightMatches` / `ClearHighlightMatches` as the user types.
+
+## Markers and tooltips
+
+Host-owned annotations — errors, warnings, "look here". **Purely visual: they
+never move the caret or the selection.**
+
+```pascal
+type TMarkerKind = (mkTint, mkSquiggle);   // rectangle behind text | wavy underline
+```
+
+| Member | Description |
+|---|---|
+| `procedure AddMarker(ALine, ACol, ALen: Integer; AKind; AColor; const AMessage: string = '')` | The general one. `ALen <= 0` means "to end of line". |
+| `procedure AddMarker(ALine, ACol, ALen; AKind; AColor; const ATip: TTipText)` | As above, with a rich tooltip. |
+| `procedure MarkLine(ALine: Integer; AKind; AColor; const AMessage \| ATip)` | The whole line. |
+| `procedure MarkWordAt(ALine, ACol: Integer; AKind; AColor; const AMessage \| ATip)` | Grows the span over the word at `ACol`. Use when a parser gives a token's position but not its length. Falls back to a single character if `ACol` isn't on a word. |
+| `procedure ClearMarkers` | Remove all. |
+| `function MarkerCount: Integer` | |
+| `function MarkerMessageAt(ALine, ACol: Integer): string` | Message of the first marker covering that position, else `''`. Drive a status bar or your own tooltip off this. |
+| `property MarkersClearOnEdit: Boolean` | Default `True`. Any edit drops all markers — they describe text that just changed. `SetText` always drops them. |
+
+Out-of-range lines are **ignored, not raised**: a parser reporting a line past
+EOF must not crash the editor.
+
+### Tooltips
+
+Hovering a marker for 500 ms shows a tooltip, drawn with Skia (not FMX `Hint`),
+so it can be multi-line with per-run colour and bold. It is dismissed by any
+key, click, scroll, or mouse-leave.
+
+```pascal
+type TTipRun  = record Text: string; Color: TAlphaColor; Bold: Boolean; end;
+     TTipLine = TArray<TTipRun>;
+     TTipText = TArray<TTipLine>;
+
+function TipRun(const AText: string; AColor: TAlphaColor = TAlphaColors.Null;
+  ABold: Boolean = False): TTipRun;
+function TipLine(const ARuns: array of TTipRun): TTipLine;
+function Tip(const ALines: array of TTipLine): TTipText;
+```
+
+A run whose `Color` is `TAlphaColors.Null` uses `TooltipTextColor`. Passing a
+plain `string` message instead of a `TTipText` yields one default-coloured run
+per `#10` line — so the simple case stays a one-liner.
+
+## Syntax highlighting
+
+The editor owns a `TSimpleHighlighter` lazily; first access installs it as the
+tokenizer. Changing keywords, rules, or colours re-lexes automatically.
+
+```pascal
+function Highlighter: TSimpleHighlighter;   // note: a function, not a property
+```
+
+| `TSimpleHighlighter` member | Description |
+|---|---|
+| `procedure UsePascal` | `//` line; `{ }` and `(* *)` blocks; `'...'` strings; case-insensitive. |
+| `procedure UseCLike` | `//` line; `/* */` block; `"..."` strings; case-sensitive. |
+| `procedure UseAntimony` | `//` and `#` line; `/* */` block; `"..."` strings; case-sensitive. |
+| `procedure AddKeyword(const AWord: string)` / `AddKeywords(const AWords: array of string)` | |
+| `procedure ClearKeywords` / `ClearRules` | |
+| `procedure AddLineComment(const APrefix: string)` | |
+| `procedure AddBlockComment(const AOpen, AClose: string)` | Multi-line. |
+| `procedure AddStringDelimiter(const ADelim: Char)` | |
+| `property CaseSensitive: Boolean` | |
+| `property KeywordColor`, `StringColor`, `CommentColor`, `NumberColor` | `TAlphaColor`. |
+
+A preset sets comment and string rules **only** — keywords are added separately.
+
+### Writing your own tokenizer
+
+The contract is pure and per-line, which is what keeps re-lexing one edited line
+cheap. Lex state flows line to line, so multi-line constructs work.
+
+```pascal
+type TTokenizeLineProc = reference to function(const ALine: string;
+  AStateIn: TLexState; out ARuns: TTokenRunArray): TLexState;
+
+type TTokenRun = record
+  StartCol: Integer;   // 0-based column into the line
+  Length: Integer;
+  Color: TAlphaColor;
+  Bold, Italic: Boolean;
+end;
+```
+
+Install with `SetTokenizer(AProc)`; force a full re-lex with
+`InvalidateAllTokens`. Runs must be ascending and non-overlapping; gaps fall
+back to `TextColor`. Return `lsDefault` (0) for "no continuation", or any other
+integer to encode your own state (e.g. "inside a block comment").
+
+> `TTokenRun.Bold` and `.Italic` are carried through but **not yet rendered** —
+> the painter uses one font. Token colour works today.
+
+## Appearance
+
+| Property | Default | Notes |
+|---|---|---|
+| `FontFamily: string` | `'Consolas'` | Live: rebuilds metrics and re-lays out. |
+| `FontSize: Single` | `13` | Live. |
+| `Monospace: Boolean` | `True` | Enables the integer-advance fast path. Set `False` for proportional fonts. |
+| `GutterVisible: Boolean` | `True` | Off ⇒ text starts at x = 0. The gutter auto-sizes to the widest line number. |
+| `WordWrap: Boolean` | `False` | On ⇒ hides the horizontal scrollbar. |
+| `BackgroundColor` | white | |
+| `TextColor` | black | Also the fallback for gaps between token runs. |
+| `GutterColor` / `GutterTextColor` | `$FFF0F0F0` / `$FF808080` | |
+| `CaretColor` | black | |
+| `SelectionColor` | `$400078D7` | Use alpha < `FF`. |
+| `FindMatchColor` | `$A0FF9800` | The match you're on. |
+| `FindHighlightColor` | `$40FFC107` | Every other visible match. Keep it weaker. |
+| `TooltipColor` / `TooltipTextColor` / `TooltipBorderColor` | `$FF2D2D30` / `$FFF0F0F0` / `$FF6E6E70` | |
+
+All colour properties merely repaint. Font properties rebuild Skia metrics.
+Everything is a live setter — no `BeginUpdate`/`EndUpdate` needed.
+
+## Behaviour
+
+| Property | Default | Notes |
+|---|---|---|
+| `BuiltInFindUI: Boolean` | `True` | Ctrl/Cmd+F shows the docked find bar. `False` ⇒ fires `OnRequestFind`. |
+| `HighlightAllMatches: Boolean` | `True` | `False` ⇒ only the current match is highlighted. |
+| `MarkersClearOnEdit: Boolean` | `True` | |
+
+## Events
+
+| Event | When |
+|---|---|
+| `OnCaretChange: TNotifyEvent` | After any caret move or edit. |
+| `OnRequestGotoLine: TNotifyEvent` | Ctrl/Cmd+G. Show a prompt, then call `GoToLine`. |
+| `OnRequestFind: TNotifyEvent` | Ctrl/Cmd+F, **only** when `BuiltInFindUI = False`. |
+
+## Keyboard
+
+| Key | Action |
+|---|---|
+| Arrows, Home, End, PgUp, PgDn | Move caret. Hold **Shift** to extend the selection. |
+| Ctrl/Cmd + C, X, V | Copy, cut, paste (via `IFMXClipboardService` — no native text services). |
+| Ctrl/Cmd + A | Select all. |
+| Ctrl/Cmd + Z | Undo. **Shift+**Ctrl/Cmd+Z or Ctrl+Y to redo. |
+| Ctrl/Cmd + F | Find bar, or `OnRequestFind`. |
+| Ctrl/Cmd + G | `OnRequestGotoLine`. |
+| Esc | Dismiss the find bar, its highlights, and any tooltip. Leaves the caret alone. |
+| Double-click | Select the word. |
+| Mouse wheel | Scroll three lines per notch. |
+
+With `WordWrap` on, **Up/Down/PgUp/PgDn move by visual row** and Home/End act on
+the visual row. A vertical run keeps its horizontal position, so moving down
+past a short line and back up returns you to the column you started from.
+
+---
+
+## Cookbook: showing parser errors
+
+Re-mark the document after each parse:
 
 ```pascal
 Editor.ClearMarkers;
@@ -99,17 +318,43 @@ Editor.MarkWordAt(10, Col, mkSquiggle, TAlphaColors.Red,
 Editor.MarkLine(12, mkTint, $30FF0000, 'unused species');
 ```
 
-A plain `string` message works too — it becomes one default-coloured tooltip
-line per `#10`. Markers clear on the next edit (`MarkersClearOnEdit`), since
-they describe text that just changed.
+**Watch the column.** A parser may report a position **inside a quoted
+sub-expression** rather than a column in the line. Antimony does exactly this:
 
-If your parser reports a position **inside a sub-expression** rather than a
-column in the line — as Antimony does — use `LineText` to map it:
+```
+Antimony: Error in model string, line 10:  In the reaction rate "k9*S0S1":
+Error when parsing input 'k9*S0 S1' at position 8: syntax error, ...
+```
+
+`position 8` is an offset into `'k9*S0 S1'`, not into line 10. Use `LineText` to
+find the sub-expression in the line, then add the offset:
 
 ```pascal
 P := Pos('k9*S0 S1', Editor.LineText(10));
 if P > 0 then
-  Editor.MarkWordAt(10, P + PosInExpr - 1, mkSquiggle, TAlphaColors.Red, ErrText);
+  Editor.MarkWordAt(10, P + 8 - 1, mkSquiggle, TAlphaColors.Red, ErrText);
+```
+
+`MarkWordAt` then grows the span over the whole offending token, because the
+parser told you where it starts but not how long it is.
+
+## Cookbook: a status bar
+
+`OnCaretChange` fires after every caret move *and* every edit, so one handler
+keeps a status bar current.
+
+```pascal
+// In the form declaration:
+//   procedure EditorCaretChange(Sender: TObject);
+Editor.OnCaretChange := EditorCaretChange;
+
+procedure TfrmMain.EditorCaretChange(Sender: TObject);
+begin
+  Status.Text := Format('Ln %d, Col %d   %d lines',
+    [FEditor.CaretLine, FEditor.CaretColumn, FEditor.LineCount]);
+  // Surface the error under the caret, if any.
+  ErrLabel.Text := FEditor.MarkerMessageAt(FEditor.CaretLine, FEditor.CaretColumn);
+end;
 ```
 
 ## Layout
