@@ -277,9 +277,11 @@ Done:
 2. ✅ **Caret rendering + blink timer + focus** (`PaintCaret`, `FCaretTimer`,
    `DoEnter`/`DoExit`, gated on `IsFocused and FCaretVisible`).
 3. ✅ **Keyboard editing** (`KeyDown` → editing primitives): insertion,
-   Backspace/Delete (with line merge), Enter (split), arrows/Home/End/PgUp/Dn.
-   Each mutation ends in `AfterEdit` (invalidate tokens, `UpdateContentSize`,
-   `EnsureCaretVisible`, `RedrawContent`).
+   Backspace/Delete (with line merge), Enter (split), arrows/Home/End/PgUp/Dn,
+   word-jump (`MoveCaretWord`, on Ctrl+←/→ or Option+←/→ — the `WordMove` flag is
+   `ssCtrl or ssAlt`, since macOS eats Ctrl+Arrow for Spaces; Shift extends by
+   word). Each mutation ends in `AfterEdit` (invalidate tokens,
+   `UpdateContentSize`, `EnsureCaretVisible`, `RedrawContent`).
 4. ✅ **Scrolling**: owned scrollbars + mouse wheel (see Architecture).
    `UpdateContentSize` tracks true max line width.
 5. ✅ **Selection**: `[FSelAnchor .. FCaret]` range (no bool flag; `SelActive`

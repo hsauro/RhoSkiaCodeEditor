@@ -362,6 +362,7 @@ type
     procedure DeleteBackward;
     procedure DeleteForward;
     procedure MoveCaretHorizontal(ADelta: Integer; ASelecting: Boolean);
+    procedure MoveCaretWord(ADir: Integer; ASelecting: Boolean);
     procedure MoveCaretVertical(ADelta: Integer; ASelecting: Boolean);
     procedure CaretToLineStart(ASelecting: Boolean);
     procedure CaretToLineEnd(ASelecting: Boolean);
@@ -3366,6 +3367,67 @@ begin
   RedrawContent;
 end;
 
+procedure TSkiaCodeEditor.MoveCaretWord(ADir: Integer; ASelecting: Boolean);
+var
+  L: string;
+  N: Integer;
+begin
+  // Ctrl/Option+Arrow: jump by word. Word chars are the find helper's set
+  // (letters, digits, underscore) -- same notion as double-click select. At a
+  // line boundary the caret steps to the adjacent line, like a plain arrow.
+  FCoalesceTyping := False;
+  ResetCaretTarget;
+  L := FLines[FCaret.Line].Text;
+  N := System.Length(L);
+
+  if ADir > 0 then
+  begin
+    if FCaret.Col >= N then
+    begin
+      if FCaret.Line < LineCount - 1 then   // at line end -> next line start
+      begin
+        Inc(FCaret.Line);
+        FCaret.Col := 0;
+      end;
+    end
+    else
+    begin
+      // skip the rest of the current word, then the separators after it,
+      // landing at the start of the next word (or the line end).
+      while (FCaret.Col < N) and FindIsWordChar(L[FCaret.Col + 1]) do
+        Inc(FCaret.Col);
+      while (FCaret.Col < N) and not FindIsWordChar(L[FCaret.Col + 1]) do
+        Inc(FCaret.Col);
+    end;
+  end
+  else
+  begin
+    if FCaret.Col = 0 then
+    begin
+      if FCaret.Line > 0 then                // at line start -> prev line end
+      begin
+        Dec(FCaret.Line);
+        FCaret.Col := System.Length(FLines[FCaret.Line].Text);
+      end;
+    end
+    else
+    begin
+      // skip separators to the left, then the word chars, landing at the
+      // start of the current/previous word.
+      while (FCaret.Col > 0) and not FindIsWordChar(L[FCaret.Col]) do
+        Dec(FCaret.Col);
+      while (FCaret.Col > 0) and FindIsWordChar(L[FCaret.Col]) do
+        Dec(FCaret.Col);
+    end;
+  end;
+
+  if not ASelecting then
+    FSelAnchor := FCaret;         // collapse when not extending
+  EnsureCaretVisible;
+  ResetCaretBlink;
+  RedrawContent;
+end;
+
 procedure TSkiaCodeEditor.MoveCaretVertical(ADelta: Integer;
   ASelecting: Boolean);
 var
@@ -3506,12 +3568,16 @@ procedure TSkiaCodeEditor.KeyDown(var Key: Word; var KeyChar: WideChar;
   Shift: TShiftState);
 var
   PageLines: Integer;
-  Sel, Cmd: Boolean;
+  Sel, Cmd, WordMove: Boolean;
 begin
   inherited;
   HideTooltip;   // any key dismisses a hover tip
   Sel := ssShift in Shift;
   Cmd := (ssCtrl in Shift) or (ssCommand in Shift);   // Ctrl on Win, Cmd on mac
+  // Word-jump modifier: Ctrl on Windows; Option (Alt) on macOS, where Ctrl+Arrow
+  // is a system Spaces shortcut and never reaches the app. Ctrl works too where
+  // the OS lets it through. Shift held as well => extend the selection by word.
+  WordMove := (ssCtrl in Shift) or (ssAlt in Shift);
 
   // Clipboard / select-all. Match on the virtual key (letters come as Ord('C')
   // etc.), since with the modifier held KeyChar is a control char.
@@ -3542,8 +3608,16 @@ begin
   // arrives in KeyChar. Shift extends the selection on navigation keys.
   // TODO: undo; IME on macOS via FMX ITextInput / IFMXTextService.
   case Key of
-    vkLeft:   begin MoveCaretHorizontal(-1, Sel); Key := 0; Exit; end;
-    vkRight:  begin MoveCaretHorizontal(1, Sel);  Key := 0; Exit; end;
+    vkLeft:   begin
+                if WordMove then MoveCaretWord(-1, Sel)
+                else MoveCaretHorizontal(-1, Sel);
+                Key := 0; Exit;
+              end;
+    vkRight:  begin
+                if WordMove then MoveCaretWord(1, Sel)
+                else MoveCaretHorizontal(1, Sel);
+                Key := 0; Exit;
+              end;
     vkUp:     begin MoveCaretVertical(-1, Sel);   Key := 0; Exit; end;
     vkDown:   begin MoveCaretVertical(1, Sel);    Key := 0; Exit; end;
     vkHome:   begin CaretToLineStart(Sel);        Key := 0; Exit; end;

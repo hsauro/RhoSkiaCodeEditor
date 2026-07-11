@@ -313,6 +313,7 @@ Everything is a live setter — no `BeginUpdate`/`EndUpdate` needed.
 | Key | Action |
 |---|---|
 | Arrows, Home, End, PgUp, PgDn | Move caret. Hold **Shift** to extend the selection. |
+| Ctrl + ←/→ (Win), Option + ←/→ (mac) | Jump by word. Add **Shift** to select by word. (On macOS Ctrl+← / → is a system Spaces shortcut, so Option is used there.) |
 | Ctrl/Cmd + C, X, V | Copy, cut, paste (via `IFMXClipboardService` — no native text services). |
 | Ctrl/Cmd + A | Select all. |
 | Ctrl/Cmd + Z | Undo. **Shift+**Ctrl/Cmd+Z or Ctrl+Y to redo. |

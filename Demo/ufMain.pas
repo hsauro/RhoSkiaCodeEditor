@@ -292,7 +292,7 @@ begin
   FEditor.GutterColor     := $FF252526;
   FEditor.GutterTextColor := $FF858585;
   FEditor.CaretColor      := $FFAEAFAD;
-  FEditor.SelectionColor  := $80264F78;
+  FEditor.SelectionColor  := $8099bce0;   // Original color $80264F78;
   FEditor.FindMatchColor  := $C0FFA500;   // prominent amber for find matches
   FEditor.Highlighter.KeywordColor := $FF569CD6;
   FEditor.Highlighter.StringColor  := $FFCE9178;
