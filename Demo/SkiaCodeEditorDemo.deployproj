@@ -1,0 +1,147 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <Import Condition="Exists('$(BDS)\bin\CodeGear.Deployment.targets')" Project="$(BDS)\bin\CodeGear.Deployment.targets"/>
+    <ProjectExtensions>
+        <ProjectFileVersion>12</ProjectFileVersion>
+    </ProjectExtensions>
+    <PropertyGroup/>
+    <ItemGroup Condition="'$(Platform)'=='OSX64'">
+        <DeployFile Include="OSX64\Release\SkiaCodeEditorDemo" Condition="'$(Config)'=='Release'">
+            <RemoteDir>SkiaCodeEditorDemo.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>SkiaCodeEditorDemo</RemoteName>
+            <DeployClass>ProjectOutput</DeployClass>
+            <Operation>1</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+            <Required>True</Required>
+        </DeployFile>
+        <DeployFile Include="OSX64\Release\SkiaCodeEditorDemo.entitlements" Condition="'$(Config)'=='Release'">
+            <RemoteDir>SkiaCodeEditorDemo.app\..\</RemoteDir>
+            <RemoteName>SkiaCodeEditorDemo.entitlements</RemoteName>
+            <DeployClass>ProjectOSXEntitlements</DeployClass>
+            <Operation>1</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="$(BDS)\bin\delphi_PROJECTICNS.icns" Condition="'$(Config)'=='Release'">
+            <RemoteDir>SkiaCodeEditorDemo.app\Contents\Resources\</RemoteDir>
+            <RemoteName>SkiaCodeEditorDemo.icns</RemoteName>
+            <DeployClass>ProjectOSXResource</DeployClass>
+            <Operation>1</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="OSX64\Release\SkiaCodeEditorDemo.info.plist" Condition="'$(Config)'=='Release'">
+            <RemoteDir>SkiaCodeEditorDemo.app\Contents\</RemoteDir>
+            <RemoteName>Info.plist</RemoteName>
+            <DeployClass>ProjectOSXInfoPList</DeployClass>
+            <Operation>1</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+    </ItemGroup>
+    <ItemGroup Condition="'$(Platform)'=='Win32'">
+        <DeployFile Include="Win32\Debug\SkiaCodeEditorDemo.exe" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>SkiaCodeEditorDemo\</RemoteDir>
+            <RemoteName>SkiaCodeEditorDemo.exe</RemoteName>
+            <DeployClass>ProjectOutput</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+            <Required>True</Required>
+        </DeployFile>
+    </ItemGroup>
+    <ItemGroup Condition="'$(Platform)'=='OSXARM64'">
+        <DeployFile Include="OSXARM64\Debug\SkiaCodeEditorDemo.info.plist" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>SkiaCodeEditorDemo.app\Contents\</RemoteDir>
+            <RemoteName>Info.plist</RemoteName>
+            <DeployClass>ProjectOSXInfoPList</DeployClass>
+            <Operation>1</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="OSXARM64\Debug\SkiaCodeEditorDemo" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>SkiaCodeEditorDemo.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>SkiaCodeEditorDemo</RemoteName>
+            <DeployClass>ProjectOutput</DeployClass>
+            <Operation>1</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+            <Required>True</Required>
+        </DeployFile>
+        <DeployFile Include="OSXARM64\Debug\SkiaCodeEditorDemo.entitlements" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>SkiaCodeEditorDemo.app\..\</RemoteDir>
+            <RemoteName>SkiaCodeEditorDemo.entitlements</RemoteName>
+            <DeployClass>ProjectOSXEntitlements</DeployClass>
+            <Operation>1</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="$(BDS)\bin\delphi_PROJECTICNS.icns" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>SkiaCodeEditorDemo.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>SkiaCodeEditorDemo.icns</RemoteName>
+            <DeployClass>ProjectOSXResource</DeployClass>
+            <Operation>1</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="OSXARM64\Release\SkiaCodeEditorDemo" Condition="'$(Config)'=='Release'">
+            <RemoteDir>SkiaCodeEditorDemo.app\Contents\MacOS\</RemoteDir>
+            <RemoteName>SkiaCodeEditorDemo</RemoteName>
+            <DeployClass>ProjectOutput</DeployClass>
+            <Operation>1</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+            <Required>True</Required>
+        </DeployFile>
+        <DeployFile Include="$(BDS)\bin\delphi_PROJECTICNS.icns" Condition="'$(Config)'=='Release'">
+            <RemoteDir>SkiaCodeEditorDemo.app\Contents\Resources\</RemoteDir>
+            <RemoteName>SkiaCodeEditorDemo.icns</RemoteName>
+            <DeployClass>ProjectOSXResource</DeployClass>
+            <Operation>1</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="OSXARM64\Release\SkiaCodeEditorDemo.entitlements" Condition="'$(Config)'=='Release'">
+            <RemoteDir>SkiaCodeEditorDemo.app\..\</RemoteDir>
+            <RemoteName>SkiaCodeEditorDemo.entitlements</RemoteName>
+            <DeployClass>ProjectOSXEntitlements</DeployClass>
+            <Operation>1</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+        <DeployFile Include="OSXARM64\Release\SkiaCodeEditorDemo.info.plist" Condition="'$(Config)'=='Release'">
+            <RemoteDir>SkiaCodeEditorDemo.app\Contents\</RemoteDir>
+            <RemoteName>Info.plist</RemoteName>
+            <DeployClass>ProjectOSXInfoPList</DeployClass>
+            <Operation>1</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
+    </ItemGroup>
+    <ItemGroup Condition="'$(Platform)'=='Win64'">
+        <DeployFile Include="Win64\Debug\SkiaCodeEditorDemo.exe" Condition="'$(Config)'=='Debug'">
+            <RemoteDir>SkiaCodeEditorDemo\</RemoteDir>
+            <RemoteName>SkiaCodeEditorDemo.exe</RemoteName>
+            <DeployClass>ProjectOutput</DeployClass>
+            <Operation>0</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+            <Required>True</Required>
+        </DeployFile>
+    </ItemGroup>
+    <ItemGroup Condition="'$(Platform)'=='Win64x'"/>
+</Project>

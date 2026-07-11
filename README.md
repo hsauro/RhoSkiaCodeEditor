@@ -101,10 +101,21 @@ Two conventions run through the whole API:
 
 | Member | Description |
 |---|---|
-| `procedure SetText(const AText: string)` | Replace the whole document. Normalises CRLF/CR to LF. Resets caret, clears undo history and markers. |
+| `procedure SetText(const AText: string)` | Replace the whole document. Normalises CRLF/CR to LF. Resets caret, clears undo history and markers, and clears `Modified`. |
 | `function GetText: string` | The whole document, lines joined with `#10`. |
 | `function LineCount: Integer` | Number of logical lines (not visual rows). |
 | `function LineText(ALine: Integer): string` | Text of one line, 1-based. `''` if out of range. |
+
+## Modified state / change notification
+
+| Member | Description |
+|---|---|
+| `property Modified: Boolean` | The dirty flag. Becomes `True` on any edit; `SetText` (load) clears it. Set it back to `False` yourself after saving. Read it in your form's `OnCloseQuery` to decide whether to prompt "save changes?". |
+| `event OnChange: TNotifyEvent` | Fires only when the text is mutated (typing, delete, paste, replace, undo/redo) — **not** on caret moves and **not** on `SetText`/load. Use it to enable a Save action or flag the title bar. |
+
+`Modified` is the persistent state; `OnChange` is the live notification behind
+it. Undo does **not** clear `Modified` (matches `TMemo`) — the flag stays set
+even if you undo back to the on-disk text. See the exit-prompt cookbook below.
 
 ## Navigation
 
@@ -289,6 +300,7 @@ Everything is a live setter — no `BeginUpdate`/`EndUpdate` needed.
 | Event | When |
 |---|---|
 | `OnCaretChange: TNotifyEvent` | After any caret move or edit. |
+| `OnChange: TNotifyEvent` | After any text mutation (not caret moves, not load). |
 | `OnRequestGotoLine: TNotifyEvent` | Ctrl/Cmd+G. Show a prompt, then call `GoToLine`. |
 | `OnRequestFind: TNotifyEvent` | Ctrl/Cmd+F, **only** when `BuiltInFindUI = False`. |
 
@@ -367,6 +379,52 @@ begin
   ErrLabel.Text := FEditor.MarkerMessageAt(FEditor.CaretLine, FEditor.CaretColumn);
 end;
 ```
+
+## Cookbook: prompt to save on exit
+
+Put the check in the form's `OnCloseQuery` — that single handler catches **every**
+exit path (the window's close button and a Quit menu that just calls `Close`).
+Reset `Modified` after each save; `SetText` clears it on load automatically.
+
+`TDialogService` is asynchronous, so you can't decide `CanClose` inline: hold
+the close, ask, and re-close from the callback. Defer that `Close` with
+`TThread.ForceQueue` so it runs *after* the dialog stack unwinds — calling
+`Close` re-entrantly from inside a modal dialog can crash.
+
+```pascal
+procedure TfrmMain.SaveDocument(const AFileName: string);
+begin
+  TFile.WriteAllText(AFileName, FEditor.GetText);
+  FEditor.Modified := False;              // on disk now => no longer dirty
+end;
+
+procedure TfrmMain.mnuQuitClick(Sender: TObject);
+begin
+  Close;                                  // routes through OnCloseQuery
+end;
+
+procedure TfrmMain.FormCloseQuery(Sender: TObject; var CanClose: Boolean);
+begin
+  if FForceClose or (not FEditor.Modified) then
+  begin
+    CanClose := True;                     // nothing unsaved, or already resolved
+    Exit;
+  end;
+  CanClose := False;                      // hold; decide in the callback
+  TDialogService.MessageDialog('Save changes before closing?',
+    TMsgDlgType.mtConfirmation,
+    [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo, TMsgDlgBtn.mbCancel], TMsgDlgBtn.mbYes, 0,
+    procedure(const AResult: TModalResult)
+    begin
+      if AResult = mrCancel then Exit;    // stay open
+      if AResult = mrYes then SaveDocument(CurrentFile);
+      FForceClose := True;                // let the re-close through
+      TThread.ForceQueue(nil, procedure begin Close; end);
+    end);
+end;
+```
+
+`FForceClose` is a `Boolean` field on the form.
 
 ## Layout
 

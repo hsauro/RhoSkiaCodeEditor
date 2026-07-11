@@ -3,14 +3,26 @@ unit ufMain;
 interface
 
 uses
-  System.SysUtils, System.Types,
+  System.SysUtils,
+  System.Types,
   System.UIConsts,
   System.UITypes,
-  System.Classes, System.Variants,
+  System.Classes,
+  System.Variants,
   FMX.Types,
-  FMX.Controls, FMX.Forms, FMX.Graphics, FMX.Dialogs,
-  FMX.StdCtrls, FMX.Objects, FMX.Edit, FMX.DialogService,
-  uSkiaCodeEditor, FMX.Menus, IOUtils, uLipsumGenerator, FMX.Layouts;
+  FMX.Controls,
+  FMX.Forms,
+  FMX.Graphics,
+  FMX.Dialogs,
+  FMX.StdCtrls,
+  FMX.Edit,
+  FMX.DialogService,
+  uSkiaCodeEditor,
+  FMX.Menus, IOUtils, uLipsumGenerator, FMX.Layouts,
+  FMX.Controls.Presentation,
+  FMX.Objects,
+  uFeatherIcons, System.Skia, FMX.Skia, System.ImageList,
+  FMX.ImgList;
 
 type
   TfrmMain = class(TForm)
@@ -20,24 +32,67 @@ type
     mnuCreate: TMenuItem;
     mnuOpen: TMenuItem;
     Layout1: TLayout;
+    Rectangle1: TRectangle;
+    btnOpen: TSpeedButton;
+    btnSave: TSpeedButton;
+    btnNew: TSpeedButton;
+    mnuNew: TMenuItem;
+    mnuSave: TMenuItem;
+    mnuSaveAs: TMenuItem;
+    btnSaveAs: TSpeedButton;
+    MenuItem1: TMenuItem;
+    MenuItem2: TMenuItem;
+    mnuQuit: TMenuItem;
+    ImageList1: TImageList;
+    mnuEdit: TMenuItem;
+    mnuUndo: TMenuItem;
+    MenuItem4: TMenuItem;
+    mnuCut: TMenuItem;
+    mnuCopy: TMenuItem;
+    mnuPaste: TMenuItem;
+    MenuItem8: TMenuItem;
+    MenuItem9: TMenuItem;
+    MenuItem10: TMenuItem;
+    MenuItem11: TMenuItem;
+    mnuFormat: TMenuItem;
+    mnuWordWrap: TMenuItem;
+    StyleBook1: TStyleBook;
     procedure FormCreate(Sender: TObject);
     procedure FormShow(Sender: TObject);
     procedure mnuLoad1Click(Sender: TObject);
     procedure mnuCreateClick(Sender: TObject);
     procedure mnuOpenClick(Sender: TObject);
+    procedure btnNewClick(Sender: TObject);
+    procedure btnOpenClick(Sender: TObject);
+    procedure btnSaveClick(Sender: TObject);
+    procedure mnuNewClick(Sender: TObject);
+    procedure mnuSaveClick(Sender: TObject);
+    procedure mnuSaveAsClick(Sender: TObject);
+    procedure btnSaveAsClick(Sender: TObject);
+    procedure mnuQuitClick(Sender: TObject);
+    procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
+    procedure mnuWordWrapClick(Sender: TObject);
   private
     FEditor: TSkiaCodeEditor;
     FStatusBar: TRectangle;
     FStatus: TLabel;
+    FFileLabel: TLabel;   // current file name, shown in-app (title bar is unreliable on macOS)
     CurrentFileName : String;
+    CurrentPath : String;
     UnTitledFileNameCount : Integer;
+    HomeIconSVGPathData : String;
+    FForceClose : Boolean;   // set once the save prompt has been resolved
     procedure UpdateStatus;
     procedure EditorCaretChange(Sender: TObject);
     procedure EditorRequestGotoLine(Sender: TObject);
     function  GetUntitledFilename : String;
-    procedure SetCurrentFileNameCaption (FileName :String);
+    procedure SetCurrentFileNameAndPath (FileName, Path : String);
   public
     { Public declarations }
+    procedure NewDocument;
+    procedure OpenDocument;
+    procedure SaveDocument (FileName : String);
+    procedure SaveAsDocument (FileName : String);
   end;
 
 var
@@ -82,22 +137,103 @@ const
     'end.';
 
 
+procedure TfrmMain.NewDocument;
+begin
+  FEditor.Settext ('');
+  SetCurrentFileNameAndPath(GetUntitledFilename, CurrentPath);
+end;
+
+
+procedure TfrmMain.OpenDocument;
+var OpenDialog: TOpenDialog;
+begin
+  OpenDialog := TOpenDialog.Create(nil);
+  try
+    OpenDialog.Title := 'Select a Text File';
+    // Filter is Windows-only here. On macOS NSOpenPanel greys out every file
+    // that doesn't match the active filter's extensions, "*.*" is NOT "all
+    // files" (it matches nothing), and the default filter is the FIRST entry
+    // (*.txt) with no reliable dropdown to switch it -- so a Windows-style
+    // filter leaves all files unselectable. An empty filter = allow any file.
+    {$IFDEF MSWINDOWS}
+    OpenDialog.Filter := 'Text files (*.txt)|*.txt|All files (*.*)|*.*';
+    {$ENDIF}
+
+    // 3. Execute and load the file if successful
+    if OpenDialog.Execute then
+    begin
+      FEditor.SetText(TFile.ReadAllText(OpenDialog.FileName));
+      SetCurrentFileNameAndPath(ExtractFileName(OpenDialog.FileName), ExtractFilePath(OpenDialog.FileName));
+    end;
+
+  finally
+    // 4. Free the memory immediately after use
+    OpenDialog.Free;
+  end;
+end;
+
+
+procedure TfrmMain.SaveDocument (FileName : String);
+begin
+   TFile.WriteAllText(IOUtils.TPath.Combine(CurrentPath, FileName), FEditor.GetText);
+   FEditor.Modified := False;   // on disk now => no longer dirty
+end;
+
+
+procedure TfrmMain.SaveAsDocument (FileName : String);
+var
+  SaveDialog: TSaveDialog;
+begin
+  // 1. Create the dialog dynamically in memory
+  SaveDialog := TSaveDialog.Create(Self);
+  try
+    // 2. Configure the dialog options
+   {$IFDEF MSWINDOWS}
+    SaveDialog.Filter := 'Text Files|*.txt;*.log|All Files|*.*';
+   {$ENDIF}
+    SaveDialog.Title := 'Save Text File As';
+    SaveDialog.DefaultExt := 'txt'; // Appends extension if user omits it
+
+    // 3. Execute the dialog and save the file
+    if SaveDialog.Execute then
+    begin
+      TFile.WriteAllText(SaveDialog.FileName, FEditor.GetText);
+      CurrentFileName := ExtractFileName(SaveDialog.FileName);
+      SetCurrentFileNameAndPath (CurrentFileName, ExtractFilePath(SaveDialog.FileName));
+      FEditor.Modified := False;   // on disk now => no longer dirty
+    end;
+  finally
+    // 4. Free the memory safely
+    SaveDialog.Free;
+  end;
+end;
+
+
 function TfrmMain.GetUntitledFilename : String;
 begin
   Inc (UnTitledFileNameCount);
-  result := 'Untitled-' + Inttostr (UnTitledFileNameCount);
+  result := 'Untitled-' + Inttostr (UnTitledFileNameCount) + '.txt';
 end;
 
-procedure TfrmMain.SetCurrentFileNameCaption (FileName :String);
+
+procedure TfrmMain.SetCurrentFileNameAndPath (FileName, Path :String);
 begin
-  Caption := FileName + ' - ' + 'Skia Memo Editor';
+  Caption := FileName + ' - ' + 'Skia Memo Editor';   // Windows title bar
+  CurrentFileName := FileName;
+  CurrentPath := Path;
+  // In-app filename display: the macOS window title doesn't reliably show a
+  // runtime Caption, so we own the pixels. Guarded because the first call
+  // happens in FormCreate before the status bar exists.
+  if Assigned(FFileLabel) then
+    FFileLabel.Text := FileName;
 end;
 
 procedure TfrmMain.FormCreate(Sender: TObject);
 begin
   UnTitledFileNameCount := 0;
-  CurrentFileName := GetUntitledFilename;
-  SetCurrentFileNameCaption (CurrentFileName);
+  OnCloseQuery := FormCloseQuery;   // one gatekeeper for the X button and Quit
+
+  SetCurrentFileNameAndPath (GetUntitledFilename, IOUtils.TPath.GetDocumentsPath);
 
   // Status bar along the bottom (a coloured rectangle with a label on it).
   FStatusBar := TRectangle.Create(Self);
@@ -116,6 +252,18 @@ begin
   FStatus.TextSettings.Font.Size := 13;
   FStatus.TextSettings.HorzAlign := TTextAlign.Leading;
   FStatus.Margins.Left := 10;
+
+  // Current file name, right-aligned opposite the Ln/Col readout. Fills the
+  // rest of the bar, so it works the same on Windows and macOS.
+  FFileLabel := TLabel.Create(Self);
+  FFileLabel.Parent := FStatusBar;
+  FFileLabel.Align := TAlignLayout.Client;
+  FFileLabel.StyledSettings := [];
+  FFileLabel.TextSettings.FontColor := TAlphaColors.White;
+  FFileLabel.TextSettings.Font.Size := 13;
+  FFileLabel.TextSettings.HorzAlign := TTextAlign.Trailing;
+  FFileLabel.Margins.Right := 12;
+  FFileLabel.Text := CurrentFileName;   // seed with the name set above
 
   FEditor := TSkiaCodeEditor.Create(Self);
   FEditor.Parent := Self;
@@ -150,7 +298,7 @@ begin
   FEditor.Highlighter.CommentColor := claLightblue;
   FEditor.Highlighter.NumberColor  := claCoral;
 
-  FEditor.FontSize := 24;
+  FEditor.FontSize := 16;
   FEditor.SetText('''
       // A negative-feeback oscillator
       // I think this orginally came from a
@@ -193,6 +341,26 @@ begin
     [FEditor.CaretLine, FEditor.CaretColumn, FEditor.LineCount]);
 end;
 
+procedure TfrmMain.btnNewClick(Sender: TObject);
+begin
+  NewDocument;
+end;
+
+procedure TfrmMain.btnOpenClick(Sender: TObject);
+begin
+  OpenDocument;
+end;
+
+procedure TfrmMain.btnSaveAsClick(Sender: TObject);
+begin
+  SaveAsDocument(CurrentFileName);
+end;
+
+procedure TfrmMain.btnSaveClick(Sender: TObject);
+begin
+  SaveDocument(CurrentFileName);
+end;
+
 procedure TfrmMain.EditorCaretChange(Sender: TObject);
 begin
   UpdateStatus;
@@ -227,28 +395,72 @@ end;
 
 procedure TfrmMain.mnuLoad1Click(Sender: TObject);
 begin
-  FEditor.SetText(TFile.ReadAllText('test1.txt'));
+  FEditor.SetText(TFile.ReadAllText('text1.txt'));
+end;
+
+procedure TfrmMain.mnuNewClick(Sender: TObject);
+begin
+  NewDocument;
 end;
 
 procedure TfrmMain.mnuOpenClick(Sender: TObject);
-var OpenDialog: TOpenDialog;
 begin
-OpenDialog := TOpenDialog.Create(nil);
-  try
-    // 2. Configure the properties
-    OpenDialog.Filter := 'Text files (*.txt)|*.txt|All files (*.*)|*.*';
-    OpenDialog.Title := 'Select a Text File';
+  OpenDocument;
+end;
 
-    // 3. Execute and load the file if successful
-    if OpenDialog.Execute then
-    begin
-      FEditor.SetText(TFile.ReadAllText(OpenDialog.FileName));
-    end;
+procedure TfrmMain.mnuQuitClick(Sender: TObject);
+begin
+  Close;   // routes through FormCloseQuery -- the single save-prompt gatekeeper
+end;
 
-  finally
-    // 4. Free the memory immediately after use
-    OpenDialog.Free;
+procedure TfrmMain.FormCloseQuery(Sender: TObject; var CanClose: Boolean);
+begin
+  // Catches every exit path: the window's X button AND the Quit menu (which
+  // just calls Close). Nothing unsaved, or the prompt already resolved => let
+  // it close.
+  if FForceClose or (not FEditor.Modified) then
+  begin
+    CanClose := True;
+    Exit;
   end;
+
+  // TDialogService is asynchronous, so we can't decide CanClose here: hold the
+  // close, ask, and re-close from the callback. ForceQueue defers that Close to
+  // the next message-loop turn, so it runs AFTER this OnCloseQuery/dialog stack
+  // unwinds -- calling Close re-entrantly from inside a modal dialog can crash.
+  CanClose := False;
+  TDialogService.MessageDialog(
+    Format('Save changes to "%s" before closing?', [CurrentFileName]),
+    TMsgDlgType.mtConfirmation,
+    [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo, TMsgDlgBtn.mbCancel],
+    TMsgDlgBtn.mbYes, 0,
+    procedure(const AResult: TModalResult)
+    begin
+      if AResult = mrCancel then
+        Exit;                                   // stay open
+      if AResult = mrYes then
+        SaveDocument(CurrentFileName);
+      FForceClose := True;
+      TThread.ForceQueue(nil, procedure begin Close; end);
+    end);
+end;
+
+procedure TfrmMain.mnuSaveAsClick(Sender: TObject);
+begin
+  SaveAsDocument(CurrentFileName);
+end;
+
+procedure TfrmMain.mnuSaveClick(Sender: TObject);
+begin
+  SaveDocument(CurrentFileName);
+end;
+
+procedure TfrmMain.mnuWordWrapClick(Sender: TObject);
+begin
+  if mnuWordWrap.IsChecked then
+     FEditor.WordWrap := True
+  else
+     FEditor.WordWrap := False;
 end;
 
 end.

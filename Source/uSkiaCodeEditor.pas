@@ -194,8 +194,11 @@ type
     FTooltipTextColor: TAlphaColor;
     FTooltipBorderColor: TAlphaColor;
 
+    FModified: Boolean;                // text edited since load / last reset
+
     // events
     FOnCaretChange: TNotifyEvent;      // caret moved or text changed
+    FOnChange: TNotifyEvent;           // text mutated (NOT caret moves / load)
     FOnRequestGotoLine: TNotifyEvent;  // user pressed Ctrl/Cmd+G
     FOnRequestFind: TNotifyEvent;      // user pressed Ctrl/Cmd+F
 
@@ -447,6 +450,12 @@ type
     // tooltip or status bar off this. 1-based.
     function MarkerMessageAt(ALine, ACol: Integer): string;
 
+    // True once the text has been edited since it was loaded. SetText (load)
+    // clears it; set it False yourself after saving. Read it in your form's
+    // OnCloseQuery to decide whether to prompt "save changes?". Runtime-only, so
+    // it is public, not published. Undo does not clear it (matches TMemo).
+    property Modified: Boolean read FModified write FModified;
+
   published
     // Everything the Object Inspector shows. Note TControl keeps Align/Anchors/
     // Size/Position/Visible/Enabled/TabOrder *public*, so a directly-derived
@@ -517,6 +526,11 @@ type
 
     // Fired after the caret moves or the text changes (good for a status bar).
     property OnCaretChange: TNotifyEvent read FOnCaretChange write FOnCaretChange;
+    // Fired only when the text is mutated (typing, delete, paste, replace, undo/
+    // redo) -- NOT on caret moves and NOT on SetText/load. Use it to enable a
+    // Save action or flag the title bar; the Modified property is the persistent
+    // dirty flag behind it.
+    property OnChange: TNotifyEvent read FOnChange write FOnChange;
     // Fired when the user presses Ctrl/Cmd+G; the host shows a "go to line"
     // prompt and calls GoToLine (the control does not pop dialogs itself).
     property OnRequestGotoLine: TNotifyEvent read FOnRequestGotoLine
@@ -1731,8 +1745,12 @@ begin
   FUndo.Clear;
   FRedo.Clear;
   FCoalesceTyping := False;
+  FModified := False;   // freshly loaded text is, by definition, unmodified
   InvalidateAllTokens;
   UpdateContentSize;
+  // Deliberately NOT firing OnChange here: OnChange means "the user/programmatic
+  // edit changed the text", and loading a document is not that. OnCaretChange
+  // below covers "content replaced, refresh the status bar".
   if Assigned(FOnCaretChange) then   // caret reset to (0,0); line count changed
     FOnCaretChange(Self);
 end;
@@ -2937,6 +2955,12 @@ begin
   EnsureCaretVisible;
   ResetCaretBlink;
   RedrawContent;
+  // Every text mutation (incl. undo/redo) passes through here -- the single
+  // place to raise the dirty flag and notify. Simple policy: undo does NOT
+  // clear Modified (matches TMemo). Load resets it in SetText.
+  FModified := True;
+  if Assigned(FOnChange) then
+    FOnChange(Self);
 end;
 
 function TSkiaCodeEditor.ComparePos(const A, B: TCaretPos): Integer;

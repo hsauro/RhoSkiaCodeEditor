@@ -361,6 +361,20 @@ Done:
     cursor warp doesn't drive it the way a real pointer does) — drive tooltips by
     hand, or move the cursor in small steps, when verifying.
 
+15. ✅ **Modified flag + `OnChange`.** `FModified` is raised in `AfterEdit` (the
+    single mutation tail, so undo/redo count too) and cleared in `SetText`;
+    `OnChange` fires from the same spot but **not** from `SetText` (load isn't an
+    "edit"). Simple policy — undo does not clear `Modified` (matches `TMemo`).
+    `Modified` is public (runtime state, not a design property); `OnChange` is
+    published. The demo's `OnCloseQuery` is the single save-prompt gatekeeper
+    (the Quit menu just calls `Close`), so the window's X button and the menu
+    share one path. Because `TDialogService` is async, `OnCloseQuery` sets
+    `CanClose := False`, prompts, and re-closes from the callback via
+    `TThread.ForceQueue` (deferring the `Close` past the modal stack — a direct
+    re-entrant `Close` can crash). Verified: type → native Yes/No/Cancel dialog
+    on both X-button and Quit; Cancel keeps it open; No closes; unmodified quits
+    with no prompt.
+
 ## Conventions
 
 - Object Pascal, FMX. Target Windows + macOS; every feature must behave
