@@ -37,6 +37,10 @@ metrics on every platform. Text layout never touches `TTextLayout`,
   scrollbars and inertia differ between Windows and macOS).
 - **Lazy work** — only visible rows are ever laid out or tokenized.
 
+<p float="center">
+  <img src="Images/ScreenShot.png" width="40%" />
+</p>
+
 ## Requirements
 
 - RAD Studio / Delphi **13** (BDS 37.0) — developed and built against this.
