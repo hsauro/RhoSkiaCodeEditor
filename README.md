@@ -38,7 +38,7 @@ metrics on every platform. Text layout never touches `TTextLayout`,
 - **Lazy work** — only visible rows are ever laid out or tokenized.
 
 <p float="center">
-  <img src="Images/ScreenShot.png" width="40%" />
+  <img src="Images/ScreenShot.png" width="55%" />
 </p>
 
 ## Requirements
