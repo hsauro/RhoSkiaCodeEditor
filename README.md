@@ -472,9 +472,36 @@ on each OS — the very divergence this component exists to avoid.
 
 ## Status
 
-Windows: developed and tested. macOS: the design is platform-neutral by
-construction, but the IME composition path and CJK font fallback have not been
-exercised on real hardware.
+Windows and macOS: developed and tested on real hardware — editing, caret/hit
+accuracy, selection, clipboard (incl. cross-app), scrolling, word wrap, find,
+and the file dialogs all verified on both. Still unexercised: the IME
+composition path and CJK glyphs (the editor builds one typeface with no fallback
+chain, so CJK renders as tofu until a fallback face is added).
+
+## macOS notes
+
+A couple of macOS behaviours that affect a *host* app rather than the control
+itself, learned while testing the demo:
+
+- **Key auto-repeat.** macOS suppresses key-repeat for character keys —
+  press-and-hold shows the accent picker instead. To get Windows-style
+  hold-to-repeat, disable it for your app at startup (before the first window):
+
+  ```pascal
+  {$IFDEF MACOS}
+  // uses Macapi.Foundation, Macapi.Helpers;
+  TNSUserDefaults.Wrap(TNSUserDefaults.OCClass.standardUserDefaults)
+    .setBool(False, StrToNSStr('ApplePressAndHoldEnabled'));
+  {$ENDIF}
+  ```
+
+- **Window title.** A runtime `Form.Caption` doesn't reliably show in the macOS
+  window title bar. Show document names in your own UI (a status bar or toolbar
+  label) rather than relying on the title — the demo does this.
+
+- **File dialog filters.** `NSOpenPanel` greys out files that don't match the
+  active filter, and `*.*` is *not* "all files" there. Leave `TOpenDialog.Filter`
+  empty on macOS (see `Demo/ufMain.pas`) to allow selecting any file.
 
 ## Licence
 

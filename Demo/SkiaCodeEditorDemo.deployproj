@@ -24,19 +24,19 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
-        <DeployFile Include="$(BDS)\bin\delphi_PROJECTICNS.icns" Condition="'$(Config)'=='Release'">
-            <RemoteDir>SkiaCodeEditorDemo.app\Contents\Resources\</RemoteDir>
-            <RemoteName>SkiaCodeEditorDemo.icns</RemoteName>
-            <DeployClass>ProjectOSXResource</DeployClass>
+        <DeployFile Include="OSX64\Release\SkiaCodeEditorDemo.info.plist" Condition="'$(Config)'=='Release'">
+            <RemoteDir>SkiaCodeEditorDemo.app\Contents\</RemoteDir>
+            <RemoteName>Info.plist</RemoteName>
+            <DeployClass>ProjectOSXInfoPList</DeployClass>
             <Operation>1</Operation>
             <LocalCommand/>
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
-        <DeployFile Include="OSX64\Release\SkiaCodeEditorDemo.info.plist" Condition="'$(Config)'=='Release'">
-            <RemoteDir>SkiaCodeEditorDemo.app\Contents\</RemoteDir>
-            <RemoteName>Info.plist</RemoteName>
-            <DeployClass>ProjectOSXInfoPList</DeployClass>
+        <DeployFile Include="$(BDS)\bin\delphi_PROJECTICNS.icns" Condition="'$(Config)'=='Release'">
+            <RemoteDir>SkiaCodeEditorDemo.app\Contents\Resources\</RemoteDir>
+            <RemoteName>SkiaCodeEditorDemo.icns</RemoteName>
+            <DeployClass>ProjectOSXResource</DeployClass>
             <Operation>1</Operation>
             <LocalCommand/>
             <RemoteCommand/>
@@ -93,6 +93,15 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
         </DeployFile>
+        <DeployFile Include="$(BDS)\bin\delphi_PROJECTICNS.icns" Condition="'$(Config)'=='Release'">
+            <RemoteDir>SkiaCodeEditorDemo.app\Contents\Resources\</RemoteDir>
+            <RemoteName>SkiaCodeEditorDemo.icns</RemoteName>
+            <DeployClass>ProjectOSXResource</DeployClass>
+            <Operation>1</Operation>
+            <LocalCommand/>
+            <RemoteCommand/>
+            <Overwrite>True</Overwrite>
+        </DeployFile>
         <DeployFile Include="OSXARM64\Release\SkiaCodeEditorDemo" Condition="'$(Config)'=='Release'">
             <RemoteDir>SkiaCodeEditorDemo.app\Contents\MacOS\</RemoteDir>
             <RemoteName>SkiaCodeEditorDemo</RemoteName>
@@ -102,15 +111,6 @@
             <RemoteCommand/>
             <Overwrite>True</Overwrite>
             <Required>True</Required>
-        </DeployFile>
-        <DeployFile Include="$(BDS)\bin\delphi_PROJECTICNS.icns" Condition="'$(Config)'=='Release'">
-            <RemoteDir>SkiaCodeEditorDemo.app\Contents\Resources\</RemoteDir>
-            <RemoteName>SkiaCodeEditorDemo.icns</RemoteName>
-            <DeployClass>ProjectOSXResource</DeployClass>
-            <Operation>1</Operation>
-            <LocalCommand/>
-            <RemoteCommand/>
-            <Overwrite>True</Overwrite>
         </DeployFile>
         <DeployFile Include="OSXARM64\Release\SkiaCodeEditorDemo.entitlements" Condition="'$(Config)'=='Release'">
             <RemoteDir>SkiaCodeEditorDemo.app\..\</RemoteDir>

@@ -276,13 +276,14 @@ begin
 
   // Syntax highlighting is now a few lines: pick a comment/string style, add
   // keywords, and (optionally) tweak colours. No hand-written scanner.
-  FEditor.Highlighter.UseAntimony;
-  FEditor.Highlighter.AddKeywords(['species', 'compartment', 'model', 'end']);
-  //FEditor.Highlighter.AddKeywords([
-  //  'unit', 'interface', 'implementation', 'uses', 'procedure', 'function',
-  //  'begin', 'end', 'var', 'const', 'type', 'if', 'then', 'else', 'for', 'to',
-  //  'do', 'while', 'repeat', 'until', 'case', 'of', 'class', 'record',
-  //  'string', 'integer']);
+  //FEditor.Highlighter.UseAntimony;
+  //FEditor.Highlighter.AddKeywords(['species', 'compartment', 'model', 'end']);
+  //FEditor.Highlighter.UsePascal;
+  FEditor.Highlighter.AddKeywords([
+    'unit', 'interface', 'implementation', 'uses', 'procedure', 'function',
+    'begin', 'end', 'var', 'const', 'type', 'if', 'then', 'else', 'for', 'to',
+    'do', 'while', 'repeat', 'until', 'case', 'of', 'class', 'record',
+    'string', 'integer']);
 
   // Editor surface colours (ARGB). A VS Code-ish dark theme, paired with
   // matching token colours on the highlighter.
