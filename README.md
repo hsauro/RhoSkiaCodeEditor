@@ -159,6 +159,12 @@ type TFindOption  = (foMatchCase, foWholeWord, foWrapAround);
 | `function ReplaceAll(const ASearch, AReplace: string; AOptions: TFindOptions = []): Integer` | Returns the count. One undo step. |
 | `procedure HighlightMatches(const ASearch: string; AOptions: TFindOptions = [])` | Tint every visible occurrence. `FindNext`/`FindPrevious` call this for you. |
 | `procedure ClearHighlightMatches` | Drop the highlights. Esc does this too. |
+| `function CountMatches(const ASearch: string; AOptions; out ACurrentIndex: Integer): Integer` | Document-wide match total (M) and the current match's 1-based ordinal (N). The built-in find bar shows "N of M" off this. |
+
+The built-in find bar shows a live **"N of M"** counter as you type and step
+through matches. Unlike the paint-time highlight (visible lines only),
+`CountMatches` scans the whole document — cheap per search, but O(document) per
+keystroke, so cap or debounce it if you wire it to a huge file yourself.
 
 The match you are *on* is painted in `FindMatchColor`; the others in the weaker
 `FindHighlightColor`. Matches are located per **visible line** at paint time, so
@@ -270,6 +276,8 @@ integer to encode your own state (e.g. "inside a block comment").
 | `Monospace: Boolean` | `True` | Requests the integer-advance fast path. It is used **only if the face really is fixed-pitch** — see below. |
 | `GutterVisible: Boolean` | `True` | Off ⇒ text starts at x = 0. The gutter auto-sizes to the widest line number. |
 | `WordWrap: Boolean` | `False` | On ⇒ hides the horizontal scrollbar. |
+| `HighlightCurrentLine: Boolean` | `False` | Faint full-width band behind the caret's line (all its rows when wrapped). Opt-in. |
+| `BracketMatching: Boolean` | `True` | Outline the `()[]{}` pair around the caret. Naive — doesn't skip brackets in strings/comments. |
 | `BackgroundColor` | white | |
 | `TextColor` | black | Also the fallback for gaps between token runs. |
 | `GutterColor` / `GutterTextColor` | `$FFF0F0F0` / `$FF808080` | |
@@ -277,6 +285,8 @@ integer to encode your own state (e.g. "inside a block comment").
 | `SelectionColor` | `$400078D7` | Use alpha < `FF`. |
 | `FindMatchColor` | `$A0FF9800` | The match you're on. |
 | `FindHighlightColor` | `$40FFC107` | Every other visible match. Keep it weaker. |
+| `CurrentLineColor` | `$18808080` | The current-line band; only shown when `HighlightCurrentLine`. Keep alpha low. |
+| `BracketMatchColor` | `$A0A0A0A0` | Outline stroke around each matched bracket. |
 | `TooltipColor` / `TooltipTextColor` / `TooltipBorderColor` | `$FF2D2D30` / `$FFF0F0F0` / `$FF6E6E70` | |
 
 All colour properties merely repaint. Font properties rebuild Skia metrics.
@@ -475,9 +485,16 @@ on each OS — the very divergence this component exists to avoid.
 
 Windows and macOS: developed and tested on real hardware — editing, caret/hit
 accuracy, selection, clipboard (incl. cross-app), scrolling, word wrap, find,
-and the file dialogs all verified on both. Still unexercised: the IME
-composition path and CJK glyphs (the editor builds one typeface with no fallback
-chain, so CJK renders as tofu until a fallback face is added).
+and the file dialogs all verified on both.
+
+Scope is a **Latin** code editor: accented Latin, typographic punctuation, and
+common symbols are covered by the single primary font (Consolas / Menlo). CJK
+and emoji glyphs are **not** supported — the control uses one typeface with no
+fallback chain, by design, so they render as tofu. (Committed IME text still
+inserts through the normal key path, so Option-key / dead-key Latin input works;
+only multi-keystroke CJK composition is out of scope.) See "CJK / non-Latin" in
+the non-goals of `CLAUDE.md` for the rationale and the additive design if it's
+ever needed.
 
 ## macOS notes
 

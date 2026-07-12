@@ -173,6 +173,12 @@ type
     FSelectionColor: TAlphaColor;
     FFindMatchColor: TAlphaColor;   // highlight for the current find match
     FFindHighlightColor: TAlphaColor;  // tint for every OTHER visible match
+    FCurrentLineColor: TAlphaColor;    // faint band behind the caret's line
+    FHighlightCurrentLine: Boolean;    // off by default; opt-in "you are here"
+    FBracketMatchColor: TAlphaColor;   // outline drawn around a matched pair
+    FBracketMatching: Boolean;         // on by default
+    FBracketValid: Boolean;            // FBracketA/B currently hold a pair
+    FBracketA, FBracketB: TCaretPos;   // the matched bracket cells (0-based)
     FSelIsMatch: Boolean;           // current selection came from find
 
     // highlight-all: the live search term, painted behind every visible match.
@@ -263,6 +269,12 @@ type
     procedure PaintRow(const ACanvas: ISkCanvas; ALineIdx, ARowInLine: Integer;
       AY: Single);
     procedure PaintSelection(const ACanvas: ISkCanvas; AFirstRow, ALastRow: Integer);
+    procedure PaintCurrentLine(const ACanvas: ISkCanvas);
+    procedure PaintBracketMatch(const ACanvas: ISkCanvas);
+    function NextCharPos(var ALine, ACol: Integer; AForward: Boolean): Boolean;
+    procedure UpdateBracketMatch;
+    procedure SetBracketMatching(const Value: Boolean);
+    procedure SetBracketMatchColor(const Value: TAlphaColor);
     procedure PaintMarkedText(const ACanvas: ISkCanvas);
     procedure PaintCaret(const ACanvas: ISkCanvas);
 
@@ -322,7 +334,10 @@ type
     function FindBackward(const ASearch: string; AFromLine, AFromCol: Integer;
       AMatchCase, AWholeWord: Boolean; out AMLine, AMCol: Integer): Boolean;
     procedure SelectMatch(ALine, ACol, ALen: Integer);
+    function LineMatchesFor(AIndex: Integer; const ASearch: string;
+      AOptions: TFindOptions): TArray<Integer>;
     function LineMatches(AIndex: Integer): TArray<Integer>;
+    procedure PushFindCount(const ASearch: string; AOptions: TFindOptions);
     procedure SetHighlightAllMatches(const Value: Boolean);
 
     // geometry / hit-testing
@@ -352,6 +367,8 @@ type
     procedure SetSelectionColor(const Value: TAlphaColor);
     procedure SetFindMatchColor(const Value: TAlphaColor);
     procedure SetFindHighlightColor(const Value: TAlphaColor);
+    procedure SetCurrentLineColor(const Value: TAlphaColor);
+    procedure SetHighlightCurrentLine(const Value: Boolean);
 
     // editing primitives (mutate FLines/FCaret, then AfterEdit)
     procedure AfterEdit(AInvalidateFrom: Integer);
@@ -420,6 +437,11 @@ type
     procedure HighlightMatches(const ASearch: string;
       AOptions: TFindOptions = []);
     procedure ClearHighlightMatches;
+    // Document-wide match count for a term (the "M"), plus the 1-based ordinal
+    // of the current find selection within it (the "N", 0 if not on a match).
+    // The built-in find bar shows "N of M" off this; custom find UIs can too.
+    function CountMatches(const ASearch: string; AOptions: TFindOptions;
+      out ACurrentIndex: Integer): Integer;
 
     // ---- markers: host-owned annotations (e.g. parser errors) ----
     // Purely visual: they never move the caret or selection, so you can mark up
@@ -516,6 +538,20 @@ type
     // "the one you're on". Painted under the text, so use alpha < FF.
     property FindHighlightColor: TAlphaColor read FFindHighlightColor
       write SetFindHighlightColor;
+    // Optional "you are here" band behind the caret's line. OFF by default;
+    // some find it distracting, so a host opts in. Faint tint over a whole line
+    // (all its wrapped rows), painted under everything else.
+    property HighlightCurrentLine: Boolean read FHighlightCurrentLine
+      write SetHighlightCurrentLine default False;
+    property CurrentLineColor: TAlphaColor read FCurrentLineColor
+      write SetCurrentLineColor;
+    // Outline the bracket pair around the caret. On by default (a subtle box
+    // only appears when the caret is next to a bracket). Naive matcher: it does
+    // not skip brackets inside strings/comments.
+    property BracketMatching: Boolean read FBracketMatching
+      write SetBracketMatching default True;
+    property BracketMatchColor: TAlphaColor read FBracketMatchColor
+      write SetBracketMatchColor;
     // Marker tooltip surfaces (own-drawn, so these are real colours, not a
     // platform hint style). TooltipTextColor is used by any run whose Color is
     // TAlphaColors.Null.
@@ -608,6 +644,10 @@ begin
   FSelectionColor  := $400078D7;   // translucent selection
   FFindMatchColor  := $A0FF9800;   // orange find highlight (more prominent)
   FFindHighlightColor := $40FFC107;  // weaker amber for the other matches
+  FCurrentLineColor := $18808080;    // faint neutral band (only if opted in)
+  FHighlightCurrentLine := False;    // off by default -- opt in per host
+  FBracketMatchColor := $A0A0A0A0;   // grey outline around a matched pair
+  FBracketMatching := True;          // on by default (subtle, non-distracting)
   FHighlightAll    := True;
 
   CanFocus := True;
@@ -1057,6 +1097,19 @@ begin
   SetColorField(FFindHighlightColor, Value);
 end;
 
+procedure TSkiaCodeEditor.SetCurrentLineColor(const Value: TAlphaColor);
+begin
+  SetColorField(FCurrentLineColor, Value);
+end;
+
+procedure TSkiaCodeEditor.SetHighlightCurrentLine(const Value: Boolean);
+begin
+  if FHighlightCurrentLine = Value then
+    Exit;
+  FHighlightCurrentLine := Value;
+  RedrawContent;   // painting only
+end;
+
 procedure TSkiaCodeEditor.SetTooltipColor(const Value: TAlphaColor);
 begin
   SetColorField(FTooltipColor, Value);
@@ -1121,6 +1174,24 @@ end;
 function FindIsWordChar(C: Char): Boolean;
 begin
   Result := CharInSet(C, ['A'..'Z', 'a'..'z', '0'..'9', '_']);
+end;
+
+// Bracket classification for bracket matching. Returns True for one of ()[]{},
+// with its partner and the scan direction (forward for an opener).
+function BracketInfo(C: Char; out APartner: Char; out AForward: Boolean): Boolean;
+begin
+  Result := True;
+  AForward := True;
+  case C of
+    '(': APartner := ')';
+    '[': APartner := ']';
+    '{': APartner := '}';
+    ')': begin APartner := '('; AForward := False; end;
+    ']': begin APartner := '['; AForward := False; end;
+    '}': begin APartner := '{'; AForward := False; end;
+  else
+    Result := False;
+  end;
 end;
 
 // Is the [AStart0, AStart0+ALen) span in ALine bounded by non-word chars?
@@ -1227,21 +1298,23 @@ begin
   RedrawContent;
 end;
 
-function TSkiaCodeEditor.LineMatches(AIndex: Integer): TArray<Integer>;
+function TSkiaCodeEditor.LineMatchesFor(AIndex: Integer; const ASearch: string;
+  AOptions: TFindOptions): TArray<Integer>;
 var
   Hay, Needle: string;
   P, N, Len: Integer;
   MatchCase, WholeWord: Boolean;
 begin
-  // Start columns (0-based) of every match of FHighlightTerm in this line. Only
-  // ever called for VISIBLE lines, so the whole-document scan never happens.
+  // Start columns (0-based) of every match of ASearch in this line. The core
+  // shared by paint-time highlighting (visible lines only) and the document-
+  // wide match count.
   SetLength(Result, 0);
-  if FHighlightTerm = '' then
+  if ASearch = '' then
     Exit;
-  MatchCase := foMatchCase in FHighlightOptions;
-  WholeWord := foWholeWord in FHighlightOptions;
-  Len := System.Length(FHighlightTerm);
-  Needle := FHighlightTerm;
+  MatchCase := foMatchCase in AOptions;
+  WholeWord := foWholeWord in AOptions;
+  Len := System.Length(ASearch);
+  Needle := ASearch;
   Hay := FLines[AIndex].Text;
   if not MatchCase then
   begin
@@ -1261,6 +1334,69 @@ begin
     end;
     P := PosEx(Needle, Hay, P + 1);   // overlapping, as FindForward does
   end;
+end;
+
+function TSkiaCodeEditor.LineMatches(AIndex: Integer): TArray<Integer>;
+begin
+  // The paint-time highlighter's per-line scan, for the live highlight term.
+  // Only ever called for VISIBLE lines, so no whole-document scan here.
+  Result := LineMatchesFor(AIndex, FHighlightTerm, FHighlightOptions);
+end;
+
+function TSkiaCodeEditor.CountMatches(const ASearch: string;
+  AOptions: TFindOptions; out ACurrentIndex: Integer): Integer;
+var
+  Li, K, CurLine, CurCol: Integer;
+  A, B: TCaretPos;
+  HaveCur: Boolean;
+  Ms: TArray<Integer>;
+begin
+  // Document-wide match count (the "M"), and the 1-based ordinal of the current
+  // find match within it (the "N"), or 0 if the selection isn't sitting on a
+  // match of ASearch. Deliberately whole-document -- unlike the lazy per-line
+  // highlight -- but only runs on a term/options change or a Next/Prev, not per
+  // paint. Reuses the same matcher as highlighting, so options agree.
+  Result := 0;
+  ACurrentIndex := 0;
+  if ASearch = '' then
+    Exit;
+  CurLine := -1;
+  CurCol := -1;
+  HaveCur := FSelIsMatch and SelActive;
+  if HaveCur then
+  begin
+    SelBounds(A, B);
+    CurLine := A.Line;
+    CurCol := A.Col;
+  end;
+  for Li := 0 to LineCount - 1 do
+  begin
+    Ms := LineMatchesFor(Li, ASearch, AOptions);
+    for K := 0 to High(Ms) do
+    begin
+      Inc(Result);
+      if HaveCur and (Li = CurLine) and (Ms[K] = CurCol) then
+        ACurrentIndex := Result;
+    end;
+  end;
+end;
+
+procedure TSkiaCodeEditor.PushFindCount(const ASearch: string;
+  AOptions: TFindOptions);
+var
+  M, N: Integer;
+begin
+  // Feed the built-in find bar its "N of M" status. Guarded, so hosts driving
+  // their own find UI (no FFindBar) are unaffected -- they can call CountMatches.
+  if not (Assigned(FFindBar) and FFindBar.Visible) then
+    Exit;
+  if ASearch = '' then
+  begin
+    FFindBar.SetMatchInfo(0, -1);   // -1 total => blank the status
+    Exit;
+  end;
+  M := CountMatches(ASearch, AOptions, N);
+  FFindBar.SetMatchInfo(N, M);
 end;
 
 { ---- markers (host-owned annotations; independent of caret + selection) ---- }
@@ -1475,20 +1611,17 @@ begin
     StartC := FCaret.Col;
   end;
 
+  Result := True;
   if FindForward(ASearch, StartL, StartC, foMatchCase in AOptions,
      foWholeWord in AOptions, ML, MC) then
-  begin
-    SelectMatch(ML, MC, System.Length(ASearch));
-    Exit(True);
-  end;
-  if (foWrapAround in AOptions) and
+    SelectMatch(ML, MC, System.Length(ASearch))
+  else if (foWrapAround in AOptions) and
      FindForward(ASearch, 0, 0, foMatchCase in AOptions,
        foWholeWord in AOptions, ML, MC) then
-  begin
-    SelectMatch(ML, MC, System.Length(ASearch));
-    Exit(True);
-  end;
-  Result := False;
+    SelectMatch(ML, MC, System.Length(ASearch))
+  else
+    Result := False;
+  PushFindCount(ASearch, AOptions);   // update the built-in bar's "N of M"
 end;
 
 function TSkiaCodeEditor.FindPrevious(const ASearch: string;
@@ -1513,20 +1646,17 @@ begin
     StartC := FCaret.Col;
   end;
 
+  Result := True;
   if FindBackward(ASearch, StartL, StartC, foMatchCase in AOptions,
      foWholeWord in AOptions, ML, MC) then
-  begin
-    SelectMatch(ML, MC, System.Length(ASearch));
-    Exit(True);
-  end;
-  if (foWrapAround in AOptions) and
+    SelectMatch(ML, MC, System.Length(ASearch))
+  else if (foWrapAround in AOptions) and
      FindBackward(ASearch, LineCount - 1, MaxInt, foMatchCase in AOptions,
        foWholeWord in AOptions, ML, MC) then
-  begin
-    SelectMatch(ML, MC, System.Length(ASearch));
-    Exit(True);
-  end;
-  Result := False;
+    SelectMatch(ML, MC, System.Length(ASearch))
+  else
+    Result := False;
+  PushFindCount(ASearch, AOptions);   // update the built-in bar's "N of M"
 end;
 
 function TSkiaCodeEditor.ReplaceCurrent(const ASearch, AReplace: string;
@@ -1657,6 +1787,7 @@ begin
       begin
         if FHighlightAll then
           HighlightMatches(S, O);
+        PushFindCount(S, O);   // live "N of M" as the term / options change
       end;
     FFindBar.OnClosed :=
       procedure
@@ -1747,6 +1878,7 @@ begin
   FRedo.Clear;
   FCoalesceTyping := False;
   FModified := False;   // freshly loaded text is, by definition, unmodified
+  FBracketValid := False;   // caret reset to (0,0); no pair yet
   InvalidateAllTokens;
   UpdateContentSize;
   // Deliberately NOT firing OnChange here: OnChange means "the user/programmatic
@@ -1913,6 +2045,7 @@ begin
   end;
   SyncTextService;   // keep the IME's notion of line/caret current
   FSelIsMatch := False;   // any caret action ends the "find match" highlight
+  UpdateBracketMatch;     // refresh the matched-bracket pair for the new caret
   if Assigned(FOnCaretChange) then
     FOnCaretChange(Self);
 end;
@@ -2186,6 +2319,9 @@ begin
   for I := FirstLine to LastLine do
     EnsureTokens(I);
 
+  // Current-line band sits at the very bottom (behind everything else), so
+  // markers, find hits, selection and text all paint over it.
+  PaintCurrentLine(ACanvas);
   // Marker tints sit at the bottom of the stack (under find hits + selection),
   // so a selected error still reads as selected.
   PaintMarkers(ACanvas, FirstRow, LastRow, mkTint);
@@ -2211,6 +2347,7 @@ begin
 
   if FGutterVisible then
     PaintGutter(ACanvas, FirstRow, LastRow);
+  PaintBracketMatch(ACanvas);   // outline over the glyphs, under the caret
   PaintMarkedText(ACanvas);
   PaintCaret(ACanvas);
   PaintTooltip(ACanvas);   // last: the tooltip floats over everything
@@ -2508,6 +2645,177 @@ begin
     Paint.Color := FTextColor;
     ACanvas.DrawSimpleText(Sub, X, Baseline, FSkFont, Paint);
   end;
+end;
+
+procedure TSkiaCodeEditor.PaintCurrentLine(const ACanvas: ISkCanvas);
+var
+  Paint: ISkPaint;
+  L, FirstRow, LastRow, Row: Integer;
+  Y: Single;
+begin
+  // Faint full-width band behind the caret's LOGICAL line -- all of its visual
+  // rows when wrapped. Off by default; painted at the bottom of the stack so
+  // text, selection, and markers all sit on top. The gutter (painted later)
+  // masks the band's left portion, so drawing full width is fine.
+  if not FHighlightCurrentLine then
+    Exit;
+  L := FCaret.Line;
+  if (L < 0) or (L >= FLines.Count) then
+    Exit;
+  FirstRow := FLines[L].FirstRow;
+  LastRow := FirstRow + RowsInLine(L) - 1;
+  Paint := TSkPaint.Create;
+  Paint.Color := FCurrentLineColor;
+  for Row := FirstRow to LastRow do
+  begin
+    Y := Row * FLineHeight - FScrollY;
+    if (Y + FLineHeight < 0) or (Y > FContent.Height) then
+      Continue;                                  // row scrolled out of view
+    ACanvas.DrawRect(TRectF.Create(FGutterWidth, Y, FContent.Width, Y + FLineHeight),
+      Paint);
+  end;
+end;
+
+function TSkiaCodeEditor.NextCharPos(var ALine, ACol: Integer;
+  AForward: Boolean): Boolean;
+begin
+  // Step one character position across line boundaries (newlines are skipped,
+  // never matched). False at the document edge. On True, (ALine, ACol) names a
+  // real char cell.
+  if AForward then
+  begin
+    Inc(ACol);
+    while (ALine < FLines.Count) and
+          (ACol >= System.Length(FLines[ALine].Text)) do
+    begin
+      Inc(ALine);
+      ACol := 0;
+    end;
+    Result := ALine < FLines.Count;
+  end
+  else
+  begin
+    Dec(ACol);
+    while (ALine >= 0) and (ACol < 0) do
+    begin
+      Dec(ALine);
+      if ALine >= 0 then
+        ACol := System.Length(FLines[ALine].Text) - 1;
+    end;
+    Result := (ALine >= 0) and (ACol >= 0);
+  end;
+end;
+
+procedure TSkiaCodeEditor.UpdateBracketMatch;
+const
+  MaxScan = 20000;   // cap: an unmatched bracket must not scan the whole doc
+var
+  L: string;
+  BLine, BCol, MLine, MCol, Depth, Steps: Integer;
+  C, Partner, Ch: Char;
+  Fwd: Boolean;
+begin
+  // Recomputed after every caret move (via ResetCaretBlink). Picks the bracket
+  // just BEFORE the caret, else the one AT it, and scans for its partner,
+  // counting nesting of the SAME pair type. Naive: brackets inside strings and
+  // comments are not skipped (would need tokenizer semantics) -- fine for code.
+  FBracketValid := False;
+  if not FBracketMatching then
+    Exit;
+  if (FCaret.Line < 0) or (FCaret.Line >= FLines.Count) then
+    Exit;
+  L := FLines[FCaret.Line].Text;
+
+  C := #0;              // silence "might not be initialized" (guarded by BCol)
+  BLine := FCaret.Line;
+  BCol := -1;
+  if (FCaret.Col >= 1) and (FCaret.Col <= System.Length(L)) and
+     BracketInfo(L[FCaret.Col], Partner, Fwd) then   // char before caret
+  begin
+    C := L[FCaret.Col];
+    BCol := FCaret.Col - 1;
+  end
+  else if (FCaret.Col < System.Length(L)) and
+          BracketInfo(L[FCaret.Col + 1], Partner, Fwd) then   // char at caret
+  begin
+    C := L[FCaret.Col + 1];
+    BCol := FCaret.Col;
+  end;
+  if BCol < 0 then
+    Exit;
+
+  MLine := BLine;
+  MCol := BCol;
+  Depth := 1;
+  Steps := 0;
+  while (Steps < MaxScan) and NextCharPos(MLine, MCol, Fwd) do
+  begin
+    Inc(Steps);
+    Ch := FLines[MLine].Text[MCol + 1];
+    if Ch = C then
+      Inc(Depth)
+    else if Ch = Partner then
+    begin
+      Dec(Depth);
+      if Depth = 0 then
+      begin
+        FBracketA.Line := BLine;  FBracketA.Col := BCol;
+        FBracketB.Line := MLine;  FBracketB.Col := MCol;
+        FBracketValid := True;
+        Exit;
+      end;
+    end;
+  end;
+end;
+
+procedure TSkiaCodeEditor.PaintBracketMatch(const ACanvas: ISkCanvas);
+var
+  Paint: ISkPaint;
+
+  procedure Box(const P: TCaretPos);
+  var
+    RowInLine, Row: Integer;
+    X1, X2, Y: Single;
+  begin
+    if (P.Line < 0) or (P.Line >= FLines.Count) then
+      Exit;
+    RowInLine := RowOfCol(P.Line, P.Col);
+    Row := FLines[P.Line].FirstRow + RowInLine;
+    Y := Row * FLineHeight - FScrollY;
+    if (Y + FLineHeight < 0) or (Y > FContent.Height) then
+      Exit;                                    // off-screen
+    X1 := ColToX(P.Line, P.Col, RowInLine) - FScrollX;
+    X2 := ColToX(P.Line, P.Col + 1, RowInLine) - FScrollX;
+    if X2 <= FGutterWidth then
+      Exit;                                    // scrolled under the gutter
+    X1 := Max(X1, FGutterWidth);
+    ACanvas.DrawRect(TRectF.Create(X1, Y, X2, Y + FLineHeight), Paint);
+  end;
+
+begin
+  if not (FBracketMatching and FBracketValid) then
+    Exit;
+  Paint := TSkPaint.Create;
+  Paint.AntiAlias := True;
+  Paint.Style := TSkPaintStyle.Stroke;
+  Paint.StrokeWidth := 1;
+  Paint.Color := FBracketMatchColor;
+  Box(FBracketA);
+  Box(FBracketB);
+end;
+
+procedure TSkiaCodeEditor.SetBracketMatching(const Value: Boolean);
+begin
+  if FBracketMatching = Value then
+    Exit;
+  FBracketMatching := Value;
+  UpdateBracketMatch;   // recompute (or clear) for the current caret
+  RedrawContent;
+end;
+
+procedure TSkiaCodeEditor.SetBracketMatchColor(const Value: TAlphaColor);
+begin
+  SetColorField(FBracketMatchColor, Value);
 end;
 
 procedure TSkiaCodeEditor.PaintSelection(const ACanvas: ISkCanvas;

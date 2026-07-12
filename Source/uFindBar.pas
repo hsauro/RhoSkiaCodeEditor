@@ -61,6 +61,9 @@ type
     procedure Activate(const ASeed: string);
     // Tint the bar to match the editor theme.
     procedure ApplyTheme(ABarColor, ATextColor: TAlphaColor);
+    // Host pushes the "N of M" match count into the status label. ATotal < 0
+    // blanks it; ATotal = 0 shows "No matches"; ACurrent = 0 shows "M matches".
+    procedure SetMatchInfo(ACurrent, ATotal: Integer);
 
     property OnFindNext: TFindFunc read FOnFindNext write FOnFindNext;
     property OnFindPrev: TFindFunc read FOnFindPrev write FOnFindPrev;
@@ -176,20 +179,29 @@ end;
 
 procedure TFindBar.DoNext(Sender: TObject);
 begin
+  // The host's find method updates the status via SetMatchInfo ("N of M"), so
+  // we don't set 'Found'/'Not found' here -- that would clobber the count.
   if Assigned(FOnFindNext) then
-    if FOnFindNext(FSearch.Text, Options) then
-      FStatus.Text := 'Found'
-    else
-      FStatus.Text := 'Not found';
+    FOnFindNext(FSearch.Text, Options);
 end;
 
 procedure TFindBar.DoPrev(Sender: TObject);
 begin
   if Assigned(FOnFindPrev) then
-    if FOnFindPrev(FSearch.Text, Options) then
-      FStatus.Text := 'Found'
-    else
-      FStatus.Text := 'Not found';
+    FOnFindPrev(FSearch.Text, Options);
+end;
+
+procedure TFindBar.SetMatchInfo(ACurrent, ATotal: Integer);
+begin
+  // Host pushes the document-wide match count here. ATotal < 0 clears it.
+  if ATotal < 0 then
+    FStatus.Text := ''
+  else if ATotal = 0 then
+    FStatus.Text := 'No matches'
+  else if ACurrent > 0 then
+    FStatus.Text := Format('%d of %d', [ACurrent, ATotal])
+  else
+    FStatus.Text := Format('%d matches', [ATotal]);
 end;
 
 procedure TFindBar.DoReplace(Sender: TObject);

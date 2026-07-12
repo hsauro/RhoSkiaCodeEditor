@@ -115,6 +115,12 @@ Restructured as a redistributable component (MIT, see `LICENSE` / `README.md`):
   by any caret action, since all funnel through `ResetCaretBlink` before
   repainting), and `PaintSelection` picks the colour off it — so a find match
   reads differently from a normal selection.
+- **Current-line highlight** (`HighlightCurrentLine`, default **off**;
+  `CurrentLineColor`): a faint full-width band behind the caret's logical line
+  (all its wrapped rows), painted *first* in `PaintContent` so everything else
+  sits on top. Off by default because some find it distracting — opt in per host.
+  `PaintCurrentLine` reads `FCaret.Line` and every caret move already repaints,
+  so it follows the caret for free.
 - **Navigation API**: `LineCount`, `GoToLine(n)` (1-based; caret to line start,
   scrolled centered), and read-only `CaretLine` / `CaretColumn` (1-based).
   Internally lines/cols are 0-based — these convert at the boundary.
@@ -377,6 +383,31 @@ Done:
     on both X-button and Quit; Cancel keeps it open; No closes; unmodified quits
     with no prompt.
 
+16. ✅ **Current-line highlight** (`HighlightCurrentLine`, default **off**;
+    `CurrentLineColor`). Faint full-width band behind the caret's logical line
+    (all wrapped rows), painted first so everything sits on top. `PaintCurrentLine`
+    reads `FCaret.Line` and every caret move already repaints, so it follows for
+    free. Off by default — the user finds always-on line highlight distracting.
+
+17. ✅ **"N of M" find counter + bracket matching.**
+    - Counter: `CountMatches(term, opts, out N): M` scans the whole doc (the one
+      deliberately non-lazy find op — O(doc), but only per term/options change or
+      Next/Prev, not per paint). `PushFindCount` feeds the bar's new
+      `SetMatchInfo`; `DoNext`/`DoPrev` no longer set 'Found'/'Not found' (would
+      clobber it). Verified deterministically (`1 of 7` for `S1` in the sample).
+    - Bracket matching (`BracketMatching`, default **on**; `BracketMatchColor`):
+      `UpdateBracketMatch` (from `ResetCaretBlink`) picks the bracket before/at the
+      caret and scans for its partner via `NextCharPos`, counting same-type nesting,
+      capped at 20k chars. `PaintBracketMatch` strokes a box round each. **Naive**:
+      does not skip brackets in strings/comments (would need tokenizer semantics).
+      Verified: `(X0 - S1/Keq1)` pair boxed, nothing else.
+
+⚠️ **GUI keystroke automation was unreliable this session** (SendKeys not
+reaching the FMX window despite AttachThreadInput — environmental focus-stealing).
+Both features were verified *deterministically* instead: drive the feature from a
+temp hook (`FindNext`, `GoToLine`, `CountMatches`) and read the result from the
+title bar / a zoomed `PrintWindow` shot, rather than synthesising keypresses.
+
 ## Conventions
 
 - Object Pascal, FMX. Target Windows + macOS; every feature must behave
@@ -453,9 +484,7 @@ uninstall the package) to build from the shell.
 
 ## Possible next features (backlog)
 
-- CJK **font fallback** (needed for IME to show non-Latin glyphs); **macOS
-  on-device IME** testing (both flagged in build-order item 9).
-- "N of M" match counter; bracket matching; current-line highlight.
+- (all backlog visual features done — see build-order 16/17.)
 - Word-wrap follow-up: `UpdateContentSize` is still O(lines) per edit (fine at
   current scale, but the `FirstRow` running sum is what a production impl would
   maintain incrementally).
@@ -464,3 +493,14 @@ uninstall the package) to build from the shell.
 
 - Not a `TMemo` replacement API-wise; it's a purpose-built editor surface.
 - No RTF, no rich embedded objects — plain text + token colors only.
+- **CJK / non-Latin glyph fallback: deliberately not done.** The target is a
+  Latin/US code editor; accented Latin, typographic punctuation, arrows, etc.
+  are all covered by the single primary font (Consolas / Menlo). Rendering CJK
+  or emoji would need a font-run-aware rewrite of the measurement/paint spine
+  (`MeasureRange`/`PaintRow`/`XToColInRow`) plus a named fallback list — Skia's
+  Delphi binding has no font manager for automatic matching — which isn't worth
+  the caret-drift risk for glyphs this audience won't type. CJK renders as tofu;
+  that's accepted, not a bug. The design is additive if the need ever arises
+  (fallback list + `UnicharToGlyph`-driven run splitting; keep the monospace
+  fast path for pure-primary lines). IME committed text still inserts via the
+  normal `KeyChar` path, so Latin/Option-key input is unaffected.
