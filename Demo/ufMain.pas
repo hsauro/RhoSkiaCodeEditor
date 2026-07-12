@@ -72,6 +72,10 @@ type
     procedure mnuQuitClick(Sender: TObject);
     procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
     procedure mnuWordWrapClick(Sender: TObject);
+    procedure mnuCutClick(Sender: TObject);
+    procedure mnuCopyClick(Sender: TObject);
+    procedure mnuPasteClick(Sender: TObject);
+    procedure mnuUndoClick(Sender: TObject);
   private
     FEditor: TSkiaCodeEditor;
     FStatusBar: TRectangle;
@@ -383,6 +387,11 @@ begin
     end);
 end;
 
+procedure TfrmMain.mnuCopyClick(Sender: TObject);
+begin
+  FEditor.CopySelection;
+end;
+
 procedure TfrmMain.mnuCreateClick(Sender: TObject);
 var lip : TLipsumGen;
 begin
@@ -392,6 +401,11 @@ begin
   finally
     Lip.Free;
   end;
+end;
+
+procedure TfrmMain.mnuCutClick(Sender: TObject);
+begin
+  FEditor.CutSelection;
 end;
 
 procedure TfrmMain.mnuLoad1Click(Sender: TObject);
@@ -407,6 +421,11 @@ end;
 procedure TfrmMain.mnuOpenClick(Sender: TObject);
 begin
   OpenDocument;
+end;
+
+procedure TfrmMain.mnuPasteClick(Sender: TObject);
+begin
+  FEditor.PasteClipboard;
 end;
 
 procedure TfrmMain.mnuQuitClick(Sender: TObject);
@@ -454,6 +473,11 @@ end;
 procedure TfrmMain.mnuSaveClick(Sender: TObject);
 begin
   SaveDocument(CurrentFileName);
+end;
+
+procedure TfrmMain.mnuUndoClick(Sender: TObject);
+begin
+  FEditor.Undo;
 end;
 
 procedure TfrmMain.mnuWordWrapClick(Sender: TObject);

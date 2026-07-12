@@ -322,9 +322,6 @@ type
 
     // clipboard (FMX IFMXClipboardService => cross-platform, no native text svc)
     function ClipboardService(out ASvc: IFMXClipboardService): Boolean;
-    procedure CopySelection;
-    procedure CutSelection;
-    procedure PasteClipboard;
 
     // find/replace (single-line matches)
     procedure ShowBuiltInFindBar;
@@ -413,6 +410,10 @@ type
     procedure Redo;
     function CanUndo: Boolean;
     function CanRedo: Boolean;
+
+    procedure CopySelection;
+    procedure CutSelection;
+    procedure PasteClipboard;
 
     // navigation
     function LineCount: Integer;

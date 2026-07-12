@@ -65,7 +65,9 @@ object frmMain: TfrmMain
       Text = 'Edit'
       object mnuUndo: TMenuItem
         Locked = True
+        ShortCut = 16474
         Text = 'Undo'
+        OnClick = mnuUndoClick
       end
       object MenuItem4: TMenuItem
         Locked = True
@@ -73,15 +75,21 @@ object frmMain: TfrmMain
       end
       object mnuCut: TMenuItem
         Locked = True
+        ShortCut = 16472
         Text = 'Cut'
+        OnClick = mnuCutClick
       end
       object mnuCopy: TMenuItem
         Locked = True
+        ShortCut = 16451
         Text = 'Copy'
+        OnClick = mnuCopyClick
       end
       object mnuPaste: TMenuItem
         Locked = True
+        ShortCut = 16470
         Text = 'Paste'
+        OnClick = mnuPasteClick
       end
       object MenuItem8: TMenuItem
         Locked = True
