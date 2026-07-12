@@ -312,7 +312,6 @@ type
     procedure SelBounds(out AStart, AEnd: TCaretPos);
     function TextInRange(const A, B: TCaretPos): string;
     function SelectedText: string;
-    procedure SelectAll;
 
     // undo/redo
     function AdvancePos(const AStart: TCaretPos; const S: string): TCaretPos;
@@ -324,7 +323,7 @@ type
     function ClipboardService(out ASvc: IFMXClipboardService): Boolean;
 
     // find/replace (single-line matches)
-    procedure ShowBuiltInFindBar;
+    //procedure ShowBuiltInFindBar;  // Moved to public
     procedure SetBuiltInFindUI(const Value: Boolean);
     function FindForward(const ASearch: string; AFromLine, AFromCol: Integer;
       AMatchCase, AWholeWord: Boolean; out AMLine, AMCol: Integer): Boolean;
@@ -372,7 +371,6 @@ type
     procedure DeleteRangeRaw(const A, B: TCaretPos);   // no AfterEdit
     procedure InsertRaw(const S: string);              // no AfterEdit; handles newlines
     procedure ReplaceSelectionWith(const S: string; ACoalesce: Boolean = False);
-    procedure DeleteSelection;
     procedure DeleteBackward;
     procedure DeleteForward;
     procedure MoveCaretHorizontal(ADelta: Integer; ASelecting: Boolean);
@@ -414,6 +412,10 @@ type
     procedure CopySelection;
     procedure CutSelection;
     procedure PasteClipboard;
+    procedure SelectAll;
+    procedure DeleteSelection;
+
+    procedure ShowBuiltInFindBar;
 
     // navigation
     function LineCount: Integer;

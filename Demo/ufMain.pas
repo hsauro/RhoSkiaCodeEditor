@@ -51,9 +51,9 @@ type
     mnuCopy: TMenuItem;
     mnuPaste: TMenuItem;
     MenuItem8: TMenuItem;
-    MenuItem9: TMenuItem;
-    MenuItem10: TMenuItem;
-    MenuItem11: TMenuItem;
+    mnuSelectAll: TMenuItem;
+    mnuFind: TMenuItem;
+    mnuDelete: TMenuItem;
     mnuFormat: TMenuItem;
     mnuWordWrap: TMenuItem;
     StyleBook1: TStyleBook;
@@ -76,6 +76,9 @@ type
     procedure mnuCopyClick(Sender: TObject);
     procedure mnuPasteClick(Sender: TObject);
     procedure mnuUndoClick(Sender: TObject);
+    procedure mnuSelectAllClick(Sender: TObject);
+    procedure mnuFindClick(Sender: TObject);
+    procedure mnuDeleteClick(Sender: TObject);
   private
     FEditor: TSkiaCodeEditor;
     FStatusBar: TRectangle;
@@ -408,6 +411,16 @@ begin
   FEditor.CutSelection;
 end;
 
+procedure TfrmMain.mnuDeleteClick(Sender: TObject);
+begin
+  FEditor.DeleteSelection;
+end;
+
+procedure TfrmMain.mnuFindClick(Sender: TObject);
+begin
+  FEditor.ShowBuiltInFindBar;
+end;
+
 procedure TfrmMain.mnuLoad1Click(Sender: TObject);
 begin
   FEditor.SetText(TFile.ReadAllText('text1.txt'));
@@ -473,6 +486,11 @@ end;
 procedure TfrmMain.mnuSaveClick(Sender: TObject);
 begin
   SaveDocument(CurrentFileName);
+end;
+
+procedure TfrmMain.mnuSelectAllClick(Sender: TObject);
+begin
+  FEditor.SelectAll;
 end;
 
 procedure TfrmMain.mnuUndoClick(Sender: TObject);

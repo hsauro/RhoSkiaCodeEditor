@@ -91,21 +91,26 @@ object frmMain: TfrmMain
         Text = 'Paste'
         OnClick = mnuPasteClick
       end
+      object mnuSelectAll: TMenuItem
+        Locked = True
+        ShortCut = 16449
+        Text = 'Select All'
+        OnClick = mnuSelectAllClick
+      end
+      object mnuDelete: TMenuItem
+        Locked = True
+        Text = 'Delete           Del'
+        OnClick = mnuDeleteClick
+      end
       object MenuItem8: TMenuItem
         Locked = True
         Text = '-'
       end
-      object MenuItem9: TMenuItem
+      object mnuFind: TMenuItem
         Locked = True
-        Text = 'MenuItem9'
-      end
-      object MenuItem10: TMenuItem
-        Locked = True
-        Text = 'MenuItem10'
-      end
-      object MenuItem11: TMenuItem
-        Locked = True
-        Text = 'MenuItem11'
+        ShortCut = 16454
+        Text = 'Find...'
+        OnClick = mnuFindClick
       end
     end
     object mnuFormat: TMenuItem
