@@ -394,7 +394,8 @@ Done:
       deliberately non-lazy find op — O(doc), but only per term/options change or
       Next/Prev, not per paint). `PushFindCount` feeds the bar's new
       `SetMatchInfo`; `DoNext`/`DoPrev` no longer set 'Found'/'Not found' (would
-      clobber it). Verified deterministically (`1 of 7` for `S1` in the sample).
+      clobber it). Verified deterministically (`1 of 7` for `S1` in the sample);
+      the live find-bar "N of M" display confirmed by the user.
     - Bracket matching (`BracketMatching`, default **on**; `BracketMatchColor`):
       `UpdateBracketMatch` (from `ResetCaretBlink`) picks the bracket before/at the
       caret and scans for its partner via `NextCharPos`, counting same-type nesting,
