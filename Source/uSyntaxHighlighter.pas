@@ -65,11 +65,15 @@ type
     procedure AddLineComment(const APrefix: string);
     procedure AddBlockComment(const AOpen, AClose: string);
     procedure AddStringDelimiter(const ADelim: Char);
+    // The first configured line-comment prefix, or '' if none. The editor uses
+    // this to drive its comment-toggle command when no prefix is set explicitly.
+    function LineComment: string;
 
     { language presets (each replaces the current comment/string rules) }
     procedure UsePascal;    // // line; { } and (* *) blocks; '...' strings; case-insensitive
     procedure UseCLike;     // // line; /* */ block; "..." strings; case-sensitive
     procedure UseAntimony;  // // and # line; /* */ block; "..." strings; case-sensitive
+    procedure UsePython;    // # line; ''' and """ triple-quote blocks; '...' "..." strings; case-sensitive
 
     { the tokenizer -- pass this to TSkiaCodeEditor.SetTokenizer }
     function Tokenize(const ALine: string; AStateIn: TLexState;
@@ -189,6 +193,14 @@ begin
   Changed;
 end;
 
+function TSimpleHighlighter.LineComment: string;
+begin
+  if FLineComments.Count > 0 then
+    Result := FLineComments[0]
+  else
+    Result := '';
+end;
+
 procedure TSimpleHighlighter.UsePascal;
 begin
   ClearRules;
@@ -216,6 +228,25 @@ begin
   AddLineComment('//');
   AddLineComment('#');
   AddBlockComment('/*', '*/');
+  AddStringDelimiter('"');
+  CaseSensitive := True;
+end;
+
+procedure TSimpleHighlighter.UsePython;
+begin
+  // Python: '#' line comments; single-line '...' and "..." strings. Triple-quoted
+  // strings (''' and """) are multi-line and cover docstrings; the engine has no
+  // multi-line *string* rule, only multi-line block *comments*, so we model them
+  // as block comments -- they render in CommentColor, a common and acceptable
+  // simplification (docstrings read comment-like anyway). #39#39#39 is ''' -- the
+  // triple-quote rules must be added *before* the ' / " string delimiters take
+  // effect, but Tokenize already tests block comments before strings, so a lone
+  // ' or " still opens an ordinary string.
+  ClearRules;
+  AddLineComment('#');
+  AddBlockComment(#39#39#39, #39#39#39);   // ''' ... '''
+  AddBlockComment('"""', '"""');
+  AddStringDelimiter('''');
   AddStringDelimiter('"');
   CaseSensitive := True;
 end;

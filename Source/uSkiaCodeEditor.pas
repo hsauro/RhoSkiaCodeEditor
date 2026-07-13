@@ -28,7 +28,7 @@ uses
   System.SysUtils, System.Classes, System.Types, System.UITypes, System.Rtti,
   System.Generics.Collections, System.Math, System.StrUtils,
   FMX.Types, FMX.Controls, FMX.Graphics, FMX.Layouts, FMX.StdCtrls, FMX.Platform,
-  FMX.Text, FMX.Forms, System.Skia, FMX.Skia,
+  FMX.Text, FMX.Forms, FMX.Menus, System.Skia, FMX.Skia,
   uCodeEditorTypes, uSyntaxHighlighter, uFindBar;
 
 const
@@ -164,6 +164,9 @@ type
     FHighlighter: TSimpleHighlighter;   // owned; created lazily by Highlighter
     FBuiltInFindUI: Boolean;            // Ctrl+F shows the built-in bar vs event
     FFindBar: TFindBar;                 // owned; created lazily on first Ctrl+F
+    FLineCommentPrefix: string;         // comment-toggle token; '' => ask Highlighter
+    FBuiltInContextMenu: Boolean;       // right-click shows the built-in popup
+    FContextMenu: TPopupMenu;           // owned; created lazily on first right-click
     FSkTypeface: ISkTypeface;
     FSkFont: ISkFont;
     FSkFontBold: ISkFont;          // for bold tooltip runs; same size/family
@@ -311,6 +314,13 @@ type
     procedure ContentDblClick(Sender: TObject);
     procedure SelectWordAt(ALine, ACol: Integer);
 
+    // comment toggle + context menu
+    function EffectiveLineComment: string;
+    procedure EnsureContextMenu;
+    procedure UpdateContextMenuState;
+    procedure PopupContextMenu(AX, AY: Single);
+    procedure ContextItemClick(Sender: TObject);
+
     // selection
     function ComparePos(const A, B: TCaretPos): Integer;
     function SelActive: Boolean;
@@ -419,6 +429,11 @@ type
     procedure PasteClipboard;
     procedure SelectAll;
     procedure DeleteSelection;
+    // Line-comment toggle over the selected lines (or the caret's line). Comments
+    // if any target line is uncommented, else uncomments -- one undo step. Uses
+    // LineCommentPrefix, falling back to the Highlighter's line comment. No-op if
+    // neither yields a prefix. Bound to Ctrl/Cmd+/ and the built-in context menu.
+    procedure ToggleLineComment;
 
     procedure ShowBuiltInFindBar;
 
@@ -522,6 +537,17 @@ type
     // Set False to handle OnRequestFind and supply your own find UI instead.
     property BuiltInFindUI: Boolean read FBuiltInFindUI write SetBuiltInFindUI
       default True;
+    // The token ToggleLineComment inserts/removes (e.g. '//'). Leave empty to
+    // take it from the Highlighter's configured line comment, so a preset like
+    // Highlighter.UsePython makes Ctrl/Cmd+/ just work. Set it to override, or
+    // to drive the toggle when using a hand-written tokenizer with no highlighter.
+    property LineCommentPrefix: string read FLineCommentPrefix
+      write FLineCommentPrefix;
+    // When True (default), right-clicking shows a built-in context menu (Cut,
+    // Copy, Paste, Select All, Toggle Comment). Set False, or assign your own
+    // PopupMenu, to take over.
+    property BuiltInContextMenu: Boolean read FBuiltInContextMenu
+      write FBuiltInContextMenu default True;
     // When True (default), FindNext/FindPrevious and the built-in find bar tint
     // every visible occurrence of the search term. False = only the current match.
     property HighlightAllMatches: Boolean read FHighlightAll
@@ -644,6 +670,7 @@ begin
   FMonospace := True;
   FGutterVisible := True;
   FBuiltInFindUI := True;
+  FBuiltInContextMenu := True;
   FGutterWidth := 48;
   FWordWrap := False;   // no-wrap stays the default (and the fast) path
   FWrapWidth := -1;
@@ -2299,6 +2326,16 @@ begin
   // PointToCaret adds the scroll offset. Take focus, then place the caret.
   if CanFocus then
     SetFocus;
+  // Right-click: show the context menu without disturbing an existing selection
+  // (so Cut/Copy act on it). With no selection, place the caret at the click so
+  // Paste lands where the user pointed.
+  if Button = TMouseButton.mbRight then
+  begin
+    if not SelActive then
+      DoMouseDown(TMouseButton.mbLeft, Shift, X, Y);
+    PopupContextMenu(X, Y);
+    Exit;
+  end;
   DoMouseDown(Button, Shift, X, Y);
 end;
 
@@ -3597,6 +3634,215 @@ begin
     ReplaceSelectionWith(V.AsString);
 end;
 
+function TSkiaCodeEditor.EffectiveLineComment: string;
+begin
+  // Explicit prefix wins; otherwise borrow the highlighter's line comment (so a
+  // preset like Highlighter.UsePython makes the toggle work with no wiring).
+  if FLineCommentPrefix <> '' then
+    Result := FLineCommentPrefix
+  else if FHighlighter <> nil then
+    Result := FHighlighter.LineComment
+  else
+    Result := '';
+end;
+
+procedure TSkiaCodeEditor.ToggleLineComment;
+var
+  Prefix: string;
+  A, B, RangeStart, RangeEnd: TCaretPos;
+  First, Last, I, OrigCol, NewCol, Removed: Integer;
+  HadSel, DoComment: Boolean;
+  SB: TStringBuilder;
+  Line: string;
+begin
+  Prefix := EffectiveLineComment;
+  if (Prefix = '') or (FLines.Count = 0) then
+    Exit;
+
+  HadSel := SelActive;
+  if HadSel then
+  begin
+    SelBounds(A, B);
+    First := A.Line;
+    Last := B.Line;
+    // A selection that stops at column 0 doesn't really include that last line.
+    if (B.Col = 0) and (Last > First) then
+      Dec(Last);
+  end
+  else
+  begin
+    First := FCaret.Line;
+    Last := FCaret.Line;
+  end;
+
+  // Comment at column 0 (flush left, à la WinEdt/Spyder), regardless of the
+  // line's indentation. Comment unless every non-blank line already starts with
+  // the prefix at column 0.
+  DoComment := False;
+  for I := First to Last do
+  begin
+    Line := FLines[I].Text;
+    if (Trim(Line) <> '') and not Line.StartsWith(Prefix) then
+    begin
+      DoComment := True;
+      Break;
+    end;
+  end;
+
+  OrigCol := FCaret.Col;
+  NewCol := OrigCol;
+
+  SB := TStringBuilder.Create;
+  try
+    for I := First to Last do
+    begin
+      Line := FLines[I].Text;
+      if DoComment then
+      begin
+        // Comment every line, blanks included (à la VS/Spyder). A truly empty
+        // line gets a bare marker (no trailing space); everything else gets
+        // "prefix + space + line" at column 0, indentation preserved after it.
+        if Line = '' then
+        begin
+          Line := Prefix;
+          if (not HadSel) and (I = FCaret.Line) then
+            NewCol := OrigCol + System.Length(Prefix);
+        end
+        else
+        begin
+          Line := Prefix + ' ' + Line;
+          if (not HadSel) and (I = FCaret.Line) then
+            NewCol := OrigCol + System.Length(Prefix) + 1;
+        end;
+      end
+      else if Line.StartsWith(Prefix) then
+      begin
+        Removed := System.Length(Prefix);
+        System.Delete(Line, 1, System.Length(Prefix));
+        if (Line <> '') and (Line[1] = ' ') then   // eat one padding space
+        begin
+          System.Delete(Line, 1, 1);
+          Inc(Removed);
+        end;
+        if (not HadSel) and (I = FCaret.Line) then
+          NewCol := Max(0, OrigCol - Removed);
+      end;
+      SB.Append(Line);
+      if I < Last then
+        SB.Append(#10);
+    end;
+
+    RangeStart.Line := First;
+    RangeStart.Col := 0;
+    RangeEnd.Line := Last;
+    RangeEnd.Col := System.Length(FLines[Last].Text);
+    ApplyReplace(RangeStart, RangeEnd, SB.ToString, False);   // one undo step
+  finally
+    SB.Free;
+  end;
+
+  // ApplyReplace parked the caret at the end of the new span and collapsed the
+  // selection. Reselect the toggled lines (so repeated toggles work), or restore
+  // the caret column on the single line we edited.
+  if HadSel then
+  begin
+    FSelAnchor.Line := First;
+    FSelAnchor.Col := 0;
+    FCaret.Line := Last;
+    FCaret.Col := System.Length(FLines[Last].Text);
+  end
+  else
+  begin
+    FCaret.Line := First;
+    FCaret.Col := Min(NewCol, System.Length(FLines[First].Text));
+    FSelAnchor := FCaret;
+  end;
+  ResetCaretTarget;
+  EnsureCaretVisible;
+  ResetCaretBlink;
+  RedrawContent;
+end;
+
+procedure TSkiaCodeEditor.EnsureContextMenu;
+  function AddItem(const AText: string; ATag: Integer): TMenuItem;
+  begin
+    Result := TMenuItem.Create(FContextMenu);
+    Result.Text := AText;
+    Result.Tag := ATag;
+    Result.OnClick := ContextItemClick;
+    Result.Parent := FContextMenu;
+  end;
+  procedure AddSep;
+  var
+    Sep: TMenuItem;
+  begin
+    Sep := TMenuItem.Create(FContextMenu);
+    Sep.Text := '-';   // FMX renders a '-' item as a separator
+    Sep.Parent := FContextMenu;
+  end;
+begin
+  if FContextMenu <> nil then
+    Exit;
+  FContextMenu := TPopupMenu.Create(Self);
+  FContextMenu.Stored := False;   // built in code; must not stream into the .fmx
+  AddItem('Cut', 0);
+  AddItem('Copy', 1);
+  AddItem('Paste', 2);
+  AddSep;
+  AddItem('Select All', 3);
+  AddSep;
+  AddItem('Toggle Comment', 4);
+end;
+
+procedure TSkiaCodeEditor.UpdateContextMenuState;
+var
+  I: Integer;
+  HasSel, CanComment: Boolean;
+begin
+  if FContextMenu = nil then
+    Exit;
+  HasSel := SelActive;
+  CanComment := EffectiveLineComment <> '';
+  for I := 0 to FContextMenu.ItemsCount - 1 do
+    case FContextMenu.Items[I].Tag of
+      0, 1: FContextMenu.Items[I].Enabled := HasSel;       // Cut, Copy
+      4:    FContextMenu.Items[I].Enabled := CanComment;   // Toggle Comment
+    end;
+end;
+
+procedure TSkiaCodeEditor.PopupContextMenu(AX, AY: Single);
+var
+  P: TPointF;
+begin
+  // PopupComponent must be set to a TFmxObject or TPopupMenu.Popup gives its
+  // internal popup a nil Parent and nothing shows -- this is what TControl does
+  // in its own ShowContextMenu. A host-assigned PopupMenu takes precedence.
+  P := FContent.LocalToScreen(TPointF.Create(AX, AY));
+  if Assigned(PopupMenu) and (PopupMenu is TPopupMenu) then
+  begin
+    TPopupMenu(PopupMenu).PopupComponent := Self;
+    TPopupMenu(PopupMenu).Popup(P.X, P.Y);
+    Exit;
+  end;
+  if not FBuiltInContextMenu then
+    Exit;
+  EnsureContextMenu;
+  UpdateContextMenuState;
+  FContextMenu.PopupComponent := Self;
+  FContextMenu.Popup(P.X, P.Y);
+end;
+
+procedure TSkiaCodeEditor.ContextItemClick(Sender: TObject);
+begin
+  case (Sender as TMenuItem).Tag of
+    0: CutSelection;
+    1: CopySelection;
+    2: PasteClipboard;
+    3: SelectAll;
+    4: ToggleLineComment;
+  end;
+end;
+
 procedure TSkiaCodeEditor.DeleteBackward;
 var
   A, B: TCaretPos;
@@ -3911,6 +4157,7 @@ begin
       Ord('A'): begin SelectAll;     Key := 0; Exit; end;
       Ord('Z'): begin if Sel then Redo else Undo; Key := 0; Exit; end;  // Shift = redo
       Ord('Y'): begin Redo; Key := 0; Exit; end;
+      vkSlash, vkDivide: begin ToggleLineComment; Key := 0; Exit; end;  // Ctrl/Cmd+/
       Ord('G'): begin
                   if Assigned(FOnRequestGotoLine) then FOnRequestGotoLine(Self);
                   Key := 0; Exit;

@@ -70,8 +70,17 @@ Restructured as a redistributable component (MIT, see `LICENSE` / `README.md`):
   its `OnChange` re-lexes. Standalone-usable too (pass `.Tokenize` to
   `SetTokenizer`). Block comments are multi-line (state N+1 = inside rule N).
   Presets: `UsePascal`, `UseCLike`, `UseAntimony` (Antimony/SBML — both `#` and
-  `//` line comments plus `/* */` blocks). A preset sets comment/string rules
-  only; keywords are added separately with `AddKeywords`.
+  `//` line comments plus `/* */` blocks), `UsePython` (`#` line; `'''`/`"""`
+  triple-quote strings modelled as **block comments** — the engine has no
+  multi-line *string* rule, only block *comments*, so docstrings render
+  comment-coloured). A preset sets comment/string rules only; keywords are added
+  separately with `AddKeywords`.
+- `uLanguageKeywords.pas` — ready-made keyword lists for the presets
+  (`PascalKeywords`, `CKeywords`, `AntimonyKeywords`, `PythonKeywords` — each a
+  `TArray<string>` const). Data-only, no editor/highlighter dependency, so a
+  caller does `AddKeywords(PythonKeywords)` instead of hand-typing the list (and
+  the lists work with a hand-written tokenizer too). Not wired into the packages
+  yet — consumers get it via `Source` on the search path.
 - `uFindBar.pas` — `TFindBar`, the built-in docked find/replace bar. Knows
   nothing about the editor: the host wires callbacks (find next/prev, replace,
   replace all, `OnSearchChanged` for live highlight-all, `OnClosed`). The editor owns one lazily behind `BuiltInFindUI` (see
@@ -402,6 +411,34 @@ Done:
       capped at 20k chars. `PaintBracketMatch` strokes a box round each. **Naive**:
       does not skip brackets in strings/comments (would need tokenizer semantics).
       Verified: `(X0 - S1/Keq1)` pair boxed, nothing else.
+
+18. ✅ **Comment toggle + context menu.**
+    - `ToggleLineComment` (public; **Ctrl/Cmd+/**, `vkSlash`/`vkDivide` in the
+      `Cmd` case block). Acts on the selected lines (or caret line). Comments if
+      any target line is uncommented, else uncomments. Prefix inserted at **column
+      0** (flush left; **not** indented — a column-0 marker gives a clean left rail
+      so you can scan at a glance what's commented vs live, which is the whole point
+      of block-commenting; indented markers dissolve into the code's indentation).
+      + a trailing space; the line's indentation is preserved after the marker, so
+      uncomment (strip prefix + one optional space) restores it. Blank lines
+      commented too (empty line => bare marker, no trailing space, so round-trip
+      stays exact); selection preserved, **one undo step** via a single `ApplyReplace` over the
+      whole line range. The prefix comes from `LineCommentPrefix` (published), or
+      falls back to `TSimpleHighlighter.LineComment` (new accessor = first
+      configured line comment) so `Highlighter.UsePython` makes it just work.
+      Verified deterministically: comment→uncomment round-trips to the original,
+      indentation + blank-line skip + col-0 line all correct.
+    - Context menu (`BuiltInContextMenu`, default **on**): right-click builds a
+      lazy `TPopupMenu` (Cut/Copy/Paste/Select All/Toggle Comment), Tag-dispatched
+      via `ContextItemClick`, enabled-state refreshed in `UpdateContextMenuState`
+      before `Popup`. A host-assigned `TControl.PopupMenu` wins over the built-in.
+      The one deliberate **native** widget (a context menu isn't text layout, so
+      it's outside the "no native presenter" rule). `FContextMenu.Stored := False`
+      so it never streams into the `.fmx`. My private show method is
+      `PopupContextMenu` (renamed off `ShowContextMenu` to avoid hiding
+      `TControl`'s virtual). Popup itself not screenshot-verified — foreground
+      stealing blocked the synthetic right-click — but wiring compiles and the
+      toggle it calls is verified.
 
 ⚠️ **GUI keystroke automation was unreliable this session** (SendKeys not
 reaching the FMX window despite AttachThreadInput — environmental focus-stealing).

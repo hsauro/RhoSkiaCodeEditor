@@ -38,6 +38,7 @@ contains
   uCodeEditorTypes in '..\Source\uCodeEditorTypes.pas',
   uSkiaCodeEditor in '..\Source\uSkiaCodeEditor.pas',
   uSyntaxHighlighter in '..\Source\uSyntaxHighlighter.pas',
+  uLanguageKeywords in '..\Source\uLanguageKeywords.pas',
   uFindBar in '..\Source\uFindBar.pas';
 
 end.

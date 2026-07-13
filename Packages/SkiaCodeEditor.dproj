@@ -115,6 +115,7 @@
         <DCCReference Include="..\Source\uCodeEditorTypes.pas"/>
         <DCCReference Include="..\Source\uSkiaCodeEditor.pas"/>
         <DCCReference Include="..\Source\uSyntaxHighlighter.pas"/>
+        <DCCReference Include="..\Source\uLanguageKeywords.pas"/>
         <DCCReference Include="..\Source\uFindBar.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>

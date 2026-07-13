@@ -118,7 +118,6 @@ object frmMain: TfrmMain
       Text = 'Format'
       object mnuWordWrap: TMenuItem
         Locked = True
-        AutoCheck = False
         Text = 'WordWrap'
         OnClick = mnuWordWrapClick
       end

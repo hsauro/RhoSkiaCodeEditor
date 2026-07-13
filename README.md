@@ -170,6 +170,39 @@ procedure TfrmMain.mnuPasteClick(Sender: TObject); begin FEditor.PasteClipboard;
 procedure TfrmMain.mnuSelectAllClick(Sender: TObject); begin FEditor.SelectAll;  end;
 ```
 
+## Comment toggle
+
+```pascal
+procedure ToggleLineComment;          // Ctrl/Cmd+/
+property LineCommentPrefix: string;   // '' => derive from the Highlighter
+```
+
+`ToggleLineComment` acts on the selected lines (or the caret's line if there's no
+selection). If any target line is uncommented it **comments** the whole block;
+otherwise it **uncomments**. The prefix is inserted at **column 0** (flush left,
+regardless of indentation — the WinEdt/Spyder convention), with a trailing space
+(`# code`); the line's own indentation is preserved after the marker, so
+uncommenting restores it exactly (the prefix and one optional following space are
+removed). Blank lines are commented too (an empty line gets a bare marker, no
+trailing space), the selection is preserved (so repeated toggles work), and the
+whole thing is **one undo step**.
+
+The prefix is resolved as: `LineCommentPrefix` if you set it, else the editor's
+`TSimpleHighlighter`'s configured line comment, else nothing (no-op). So
+`Editor.Highlighter.UsePython` alone makes Ctrl/Cmd+/ insert `#`; set
+`LineCommentPrefix` explicitly to override, or to drive the toggle with a
+hand-written tokenizer.
+
+## Context menu
+
+`BuiltInContextMenu` (default **True**): right-clicking shows a built-in popup —
+**Cut / Copy / Paste / Select All / Toggle Comment** — wired to the public
+methods, with Cut/Copy enabled only when there's a selection and Toggle Comment
+only when a comment prefix is available. Right-clicking places the caret when
+there's no selection (so Paste lands where you pointed) and leaves an existing
+selection intact. Set it `False` to suppress it, or assign your own
+`PopupMenu` (the standard `TControl` property) to replace it.
+
 ## Find and replace
 
 Matches are **single-line** (the search string never contains a newline).
@@ -260,6 +293,7 @@ function Highlighter: TSimpleHighlighter;   // note: a function, not a property
 | `procedure UsePascal` | `//` line; `{ }` and `(* *)` blocks; `'...'` strings; case-insensitive. |
 | `procedure UseCLike` | `//` line; `/* */` block; `"..."` strings; case-sensitive. |
 | `procedure UseAntimony` | `//` and `#` line; `/* */` block; `"..."` strings; case-sensitive. |
+| `procedure UsePython` | `#` line; `'''` and `"""` triple-quote blocks; `'...'` and `"..."` strings; case-sensitive. Triple-quoted strings/docstrings are coloured like comments — see note. |
 | `procedure AddKeyword(const AWord: string)` / `AddKeywords(const AWords: array of string)` | |
 | `procedure ClearKeywords` / `ClearRules` | |
 | `procedure AddLineComment(const APrefix: string)` | |
@@ -269,6 +303,27 @@ function Highlighter: TSimpleHighlighter;   // note: a function, not a property
 | `property KeywordColor`, `StringColor`, `CommentColor`, `NumberColor` | `TAlphaColor`. |
 
 A preset sets comment and string rules **only** — keywords are added separately.
+Ready-made keyword lists for each preset live in **`uLanguageKeywords`**, so you
+don't have to type them out:
+
+```pascal
+uses uSkiaCodeEditor, uLanguageKeywords;
+
+Editor.Highlighter.UsePython;
+Editor.Highlighter.AddKeywords(PythonKeywords);
+```
+
+The constants are `PascalKeywords`, `CKeywords`, `AntimonyKeywords`, and
+`PythonKeywords` (each a `TArray<string>`). It's a data-only unit with no
+dependency on the editor, so the lists work with a hand-written tokenizer too —
+add more with `AddKeywords`, or start from `ClearKeywords` for a different set.
+
+> **Python triple-quoted strings.** The tokenizer has a multi-line *block
+> comment* rule but no multi-line *string* rule, so `UsePython` models `'''…'''`
+> and `"""…"""` as block comments. They therefore render in `CommentColor`, not
+> `StringColor` — a deliberate, common simplification (docstrings read
+> comment-like), and the only way to get multi-line spans without a bigger lexer.
+> Single-line `'…'` / `"…"` are ordinary strings.
 
 ### Writing your own tokenizer
 
@@ -336,6 +391,8 @@ Everything is a live setter — no `BeginUpdate`/`EndUpdate` needed.
 | `BuiltInFindUI: Boolean` | `True` | Ctrl/Cmd+F shows the docked find bar. `False` ⇒ fires `OnRequestFind`. |
 | `HighlightAllMatches: Boolean` | `True` | `False` ⇒ only the current match is highlighted. |
 | `MarkersClearOnEdit: Boolean` | `True` | |
+| `BuiltInContextMenu: Boolean` | `True` | Right-click shows a built-in Cut/Copy/Paste/Select All/Toggle Comment popup. `False`, or assign your own `PopupMenu`, to take over. |
+| `LineCommentPrefix: string` | `''` | Token for `ToggleLineComment`. Empty ⇒ taken from the `Highlighter`. |
 
 ## Events
 
@@ -357,6 +414,8 @@ Everything is a live setter — no `BeginUpdate`/`EndUpdate` needed.
 | Ctrl/Cmd + Z | Undo. **Shift+**Ctrl/Cmd+Z or Ctrl+Y to redo. |
 | Ctrl/Cmd + F | Find bar, or `OnRequestFind`. |
 | Ctrl/Cmd + G | `OnRequestGotoLine`. |
+| Ctrl/Cmd + / | Toggle line comment on the selection (or caret line). |
+| Right-click | Built-in context menu (Cut/Copy/Paste/Select All/Toggle Comment), when `BuiltInContextMenu`. |
 | Esc | Dismiss the find bar, its highlights, and any tooltip. Leaves the caret alone. |
 | Double-click | Select the word. |
 | Mouse wheel | Scroll three lines per notch. |
@@ -483,6 +542,8 @@ end;
   so the editor and highlighters can both use it with no circular dependency.
 - `uSkiaCodeEditor.pas` — the control.
 - `uSyntaxHighlighter.pas` — `TSimpleHighlighter`, a configurable tokenizer.
+- `uLanguageKeywords.pas` — ready-made keyword lists (`PascalKeywords`,
+  `CKeywords`, `AntimonyKeywords`, `PythonKeywords`) for the presets. Data only.
 - `uFindBar.pas` — `TFindBar`, the built-in docked find/replace bar.
 - `uSkiaCodeEditorReg.pas` — design-time registration only.
 
