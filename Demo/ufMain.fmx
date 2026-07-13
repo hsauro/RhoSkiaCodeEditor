@@ -15,8 +15,8 @@ object frmMain: TfrmMain
   object MainMenu1: TMainMenu
     Left = 752
     Top = 128
-    object Load: TMenuItem
-      Text = 'Load'
+    object mnuFIle: TMenuItem
+      Text = 'File'
       object mnuNew: TMenuItem
         Locked = True
         Text = 'New'
@@ -44,6 +44,7 @@ object frmMain: TfrmMain
       object mnuLoad1: TMenuItem
         Locked = True
         Text = 'Load Test File'
+        Visible = False
         OnClick = mnuLoad1Click
       end
       object mnuCreate: TMenuItem
@@ -117,9 +118,17 @@ object frmMain: TfrmMain
       Text = 'Format'
       object mnuWordWrap: TMenuItem
         Locked = True
-        AutoCheck = True
+        AutoCheck = False
         Text = 'WordWrap'
         OnClick = mnuWordWrapClick
+      end
+    end
+    object mnuHelp: TMenuItem
+      Text = 'Help'
+      object mnuAbout: TMenuItem
+        Locked = True
+        Text = 'About'
+        OnClick = mnuAboutClick
       end
     end
   end

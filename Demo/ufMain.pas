@@ -27,7 +27,7 @@ uses
 type
   TfrmMain = class(TForm)
     MainMenu1: TMainMenu;
-    Load: TMenuItem;
+    mnuFIle: TMenuItem;
     mnuLoad1: TMenuItem;
     mnuCreate: TMenuItem;
     mnuOpen: TMenuItem;
@@ -57,6 +57,8 @@ type
     mnuFormat: TMenuItem;
     mnuWordWrap: TMenuItem;
     StyleBook1: TStyleBook;
+    mnuHelp: TMenuItem;
+    mnuAbout: TMenuItem;
     procedure FormCreate(Sender: TObject);
     procedure FormShow(Sender: TObject);
     procedure mnuLoad1Click(Sender: TObject);
@@ -79,6 +81,7 @@ type
     procedure mnuSelectAllClick(Sender: TObject);
     procedure mnuFindClick(Sender: TObject);
     procedure mnuDeleteClick(Sender: TObject);
+    procedure mnuAboutClick(Sender: TObject);
   private
     FEditor: TSkiaCodeEditor;
     FStatusBar: TRectangle;
@@ -307,33 +310,34 @@ begin
   FEditor.Highlighter.NumberColor  := claCoral;
 
   FEditor.FontSize := 16;
-  FEditor.SetText('''
-      // A negative-feeback oscillator
-      // I think this orginally came from a
-      // model by Athel Cornish-Bowden
-
-      // Reactions:
-      J0: $X0 => S1; VM1*(X0 - S1/Keq1)/(1 + X0 + S1 + S4^h)
-      J1: S1 => S2; (10*S1 - 2*S2)/(1 + S1 + S2)
-      J2: S2 => S3; (10*S2 - 2*S3)/(1 + S2 + S3)
-      J3: S3 => S4; (10*S3 - 2*S4)/(1 + S3 + S4)
-      J4: S4 => $X1; V4*S4/(KS4 + S4)
-
-      // Species initializations:
-      S1 = 0
-      S2 = 0
-      S3 = 0
-      S4 = 0
-      X0 = 10
-      X1 = 0
-
-      // Variable initializations:
-      VM1 = 10
-      Keq1 = 10
-      h = 10
-      V4 = 2.5
-      KS4 = 0.5;
-    ''');
+  FEditor.SetText(ExampleText);
+//  FEditor.SetText('''
+//      // A negative-feeback oscillator
+//      // I think this orginally came from a
+//      // model by Athel Cornish-Bowden
+//
+//      // Reactions:
+//      J0: $X0 => S1; VM1*(X0 - S1/Keq1)/(1 + X0 + S1 + S4^h)
+//      J1: S1 => S2; (10*S1 - 2*S2)/(1 + S1 + S2)
+//      J2: S2 => S3; (10*S2 - 2*S3)/(1 + S2 + S3)
+//      J3: S3 => S4; (10*S3 - 2*S4)/(1 + S3 + S4)
+//      J4: S4 => $X1; V4*S4/(KS4 + S4)
+//
+//      // Species initializations:
+//      S1 = 0
+//      S2 = 0
+//      S3 = 0
+//      S4 = 0
+//      X0 = 10
+//      X1 = 0
+//
+//      // Variable initializations:
+//      VM1 = 10
+//      Keq1 = 10
+//      h = 10
+//      V4 = 2.5
+//      KS4 = 0.5;
+//    ''');
   //FEditor.WordWrap := True;
 end;
 
@@ -388,6 +392,11 @@ begin
          TryStrToInt(Trim(AValues[0]), N) then
         FEditor.GoToLine(N);
     end);
+end;
+
+procedure TfrmMain.mnuAboutClick(Sender: TObject);
+begin
+   Showmessage ('Sample Editor using FMXCodeEditor Control, version:' + FEditor.Version);
 end;
 
 procedure TfrmMain.mnuCopyClick(Sender: TObject);
@@ -500,10 +509,11 @@ end;
 
 procedure TfrmMain.mnuWordWrapClick(Sender: TObject);
 begin
-  if mnuWordWrap.IsChecked then
-     FEditor.WordWrap := True
-  else
-     FEditor.WordWrap := False;
+  // The menu check is the source of truth -- it's what the user sees. AutoCheck
+  // is off (see .fmx) so we flip the check ourselves here, deterministically,
+  // then bring the editor in line with it.
+  mnuWordWrap.IsChecked := not mnuWordWrap.IsChecked;
+  FEditor.WordWrap := mnuWordWrap.IsChecked;
 end;
 
 end.

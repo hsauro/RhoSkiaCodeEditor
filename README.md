@@ -142,6 +142,34 @@ History is bounded at 1000 steps and is cleared by `SetText`. Every text
 mutation — typing, paste, `ReplaceAll` — goes through one choke point, so
 everything is undoable, and `ReplaceAll` is a *single* step.
 
+## Clipboard and selection
+
+These are the same operations as the built-in keyboard shortcuts, exposed as
+public methods so you can wire them to an **Edit menu** (Cut/Copy/Paste/Delete/
+Select All) and get behaviour identical to the keystrokes. Clipboard access goes
+through `IFMXClipboardService` — cross-platform, no native text services — and
+every text mutation is undoable through the usual choke point.
+
+| Member | Description |
+|---|---|
+| `procedure CopySelection` | Copy the selection to the clipboard. No-op if nothing is selected. |
+| `procedure CutSelection` | Copy the selection, then delete it. No-op if nothing is selected. |
+| `procedure PasteClipboard` | Insert the clipboard text at the caret, replacing any selection. No-op if the clipboard holds no text. |
+| `procedure DeleteSelection` | Delete the selection **without** touching the clipboard. No-op if nothing is selected. |
+| `procedure SelectAll` | Select the whole document. |
+| `procedure ShowBuiltInFindBar` | Open the docked find/replace bar programmatically — the same as Ctrl/Cmd+F when `BuiltInFindUI` is on. Wire it to a Find menu item. |
+
+Gate Cut / Copy / Delete on whether there's a selection: `Editor.SelText <> ''`.
+Paste can stay enabled (it no-ops on an empty clipboard). Undo / Redo menu items
+pair naturally with `CanUndo` / `CanRedo` above.
+
+```pascal
+procedure TfrmMain.mnuCutClick(Sender: TObject);   begin FEditor.CutSelection;   end;
+procedure TfrmMain.mnuCopyClick(Sender: TObject);  begin FEditor.CopySelection;  end;
+procedure TfrmMain.mnuPasteClick(Sender: TObject); begin FEditor.PasteClipboard; end;
+procedure TfrmMain.mnuSelectAllClick(Sender: TObject); begin FEditor.SelectAll;  end;
+```
+
 ## Find and replace
 
 Matches are **single-line** (the search string never contains a newline).

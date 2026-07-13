@@ -3,7 +3,7 @@
         <ProjectGuid>{F44FD77E-C0DC-479C-B50B-594B79A97BB1}</ProjectGuid>
         <MainSource>dclSkiaCodeEditor.dpk</MainSource>
         <Base>True</Base>
-        <Config Condition="'$(Config)'==''">Debug</Config>
+        <Config Condition="'$(Config)'==''">Release</Config>
         <ProjectName Condition="'$(ProjectName)'==''">dclSkiaCodeEditor</ProjectName>
         <TargetedPlatforms>1183745</TargetedPlatforms>
         <AppType>Package</AppType>

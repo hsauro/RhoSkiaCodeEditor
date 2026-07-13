@@ -31,6 +31,9 @@ uses
   FMX.Text, FMX.Forms, System.Skia, FMX.Skia,
   uCodeEditorTypes, uSyntaxHighlighter, uFindBar;
 
+const
+   _VERSION = '1.0';
+
 type
   // Token/lexer types (TTokenRun, TLexState, TTokenizeLineProc, ls* consts)
   // live in uCodeEditorTypes and are re-exported here for callers.
@@ -122,6 +125,8 @@ type
   // native services, as the design allows.
   TSkiaCodeEditor = class(TControl, ITextInput)
   private
+    FVersion: String;
+
     FLines: TObjectList<TEditorLine>;
     FContent: TControl;            // Skia paint surface, client-aligned = viewport
     FVScroll: TScrollBar;          // vertical scrollbar (we own scrolling)
@@ -499,6 +504,8 @@ type
     property Visible;
     property Width;
 
+    property Version: String read FVersion;
+
     // Font. FontSize is a Single, so it takes no `default` specifier and is
     // always streamed -- harmless, and the alternative (a stored-function) buys
     // nothing here.
@@ -619,6 +626,9 @@ var
   TextSvc: IFMXTextService;
 begin
   inherited Create(AOwner);
+
+  FVersion := _VERSION;
+
   FLines := TObjectList<TEditorLine>.Create(True);
   FUndo := TList<TEditAction>.Create;
   FRedo := TList<TEditAction>.Create;

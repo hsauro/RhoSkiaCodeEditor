@@ -44,7 +44,7 @@ var
   LCurrentLineLength: Integer;
   LSentencesInThisPara: Integer;
 const
-  MAX_LINE_LENGTH = 60; // Hard wrap lines at 60 characters
+  MAX_LINE_LENGTH = 80; // Hard wrap lines at 60 characters
 begin
   if ParagraphCount <= 0 then Exit('');
 
