@@ -274,6 +274,12 @@ Restructured as a redistributable component (MIT, see `LICENSE` / `README.md`):
   it stays right across font sizes and growing line counts. The `GutterVisible`
   property toggles it — when off, `FGutterWidth` becomes 0 (text/caret/selection
   all start at x=0 with no other changes) and `PaintGutter` is skipped.
+  - **Gutter separator** (`GutterLineColor`, `GutterLineThickness`; default a
+    1px grey rule, thickness 0 hides it). `PaintGutter` fills it as the gutter's
+    **rightmost `thickness` pixels** (`x = FGutterWidth − thickness … FGutterWidth`),
+    so it sits on the gutter side and never eats into the text area. Purely
+    visual — the setters just repaint, no re-layout; it spans the same visible
+    row range as the gutter background.
 - `ColToX` / `XToColInRow` / `PointToCaret` are the hit-testing spine, all
   row-relative: a wrapped row restarts at the left margin, so `ColToX` measures
   from the row's first column (`MeasureRange`), not the line's. Monospace

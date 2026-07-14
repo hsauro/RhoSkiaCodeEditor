@@ -177,6 +177,8 @@ type
     FBackColor: TAlphaColor;
     FGutterBackColor: TAlphaColor;
     FGutterTextColor: TAlphaColor;
+    FGutterLineColor: TAlphaColor;     // separator between gutter and text
+    FGutterLineThickness: Single;      // 0 = invisible
     FCaretColor: TAlphaColor;
     FSelectionColor: TAlphaColor;
     FFindMatchColor: TAlphaColor;   // highlight for the current find match
@@ -386,6 +388,8 @@ type
     procedure SetTextColor(const Value: TAlphaColor);
     procedure SetGutterColor(const Value: TAlphaColor);
     procedure SetGutterTextColor(const Value: TAlphaColor);
+    procedure SetGutterLineColor(const Value: TAlphaColor);
+    procedure SetGutterLineThickness(const Value: Single);
     procedure SetCaretColor(const Value: TAlphaColor);
     procedure SetSelectionColor(const Value: TAlphaColor);
     procedure SetFindMatchColor(const Value: TAlphaColor);
@@ -584,6 +588,13 @@ type
     property TextColor: TAlphaColor read FTextColor write SetTextColor;
     property GutterColor: TAlphaColor read FGutterBackColor write SetGutterColor;
     property GutterTextColor: TAlphaColor read FGutterTextColor write SetGutterTextColor;
+    // Vertical separator between the gutter and the text area. Drawn on the
+    // gutter side (its rightmost pixels), so it never eats into the text. A
+    // thickness of 0 hides it; default is a 1px grey rule.
+    property GutterLineColor: TAlphaColor read FGutterLineColor
+      write SetGutterLineColor;
+    property GutterLineThickness: Single read FGutterLineThickness
+      write SetGutterLineThickness;
     property CaretColor: TAlphaColor read FCaretColor write SetCaretColor;
     property SelectionColor: TAlphaColor read FSelectionColor write SetSelectionColor;
     // Highlight for the match selected by FindNext/FindPrevious (distinct from a
@@ -702,6 +713,8 @@ begin
   FBackColor       := TAlphaColors.White;
   FGutterBackColor := $FFF0F0F0;
   FGutterTextColor := $FF808080;
+  FGutterLineColor := $FF808080;     // grey separator, matching the numbers
+  FGutterLineThickness := 1;         // one-pixel rule; 0 hides it
   FCaretColor      := TAlphaColors.Black;
   FSelectionColor  := $400078D7;   // translucent selection
   FFindMatchColor  := $A0FF9800;   // orange find highlight (more prominent)
@@ -1138,6 +1151,19 @@ end;
 procedure TSkiaCodeEditor.SetGutterTextColor(const Value: TAlphaColor);
 begin
   SetColorField(FGutterTextColor, Value);
+end;
+
+procedure TSkiaCodeEditor.SetGutterLineColor(const Value: TAlphaColor);
+begin
+  SetColorField(FGutterLineColor, Value);
+end;
+
+procedure TSkiaCodeEditor.SetGutterLineThickness(const Value: Single);
+begin
+  if Value = FGutterLineThickness then
+    Exit;
+  FGutterLineThickness := Value;   // purely visual; no re-layout needed
+  RedrawContent;
 end;
 
 procedure TSkiaCodeEditor.SetCaretColor(const Value: TAlphaColor);
@@ -2714,6 +2740,18 @@ begin
     // right-align within gutter with a ~0.6em right margin (font-proportional)
     ACanvas.DrawSimpleText(NumStr,
       FGutterWidth - TextW - FDigitWidth * 0.6, Baseline, FSkFont, Paint);
+  end;
+
+  // Separator rule, drawn on the gutter side (its rightmost `thickness` pixels)
+  // so it sits over the gutter, never inside the text area. Skipped at 0.
+  if FGutterLineThickness > 0 then
+  begin
+    Paint.Color := FGutterLineColor;
+    ACanvas.DrawRect(
+      TRectF.Create(FGutterWidth - FGutterLineThickness,
+        AFirstRow * FLineHeight - FScrollY,
+        FGutterWidth, (ALastRow + 1) * FLineHeight - FScrollY),
+      Paint);
   end;
 end;
 
