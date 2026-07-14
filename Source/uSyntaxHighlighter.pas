@@ -22,7 +22,8 @@ interface
 uses
   System.SysUtils, System.Classes, System.UITypes,
   System.Generics.Collections,
-  uCodeEditorTypes;
+  uCodeEditorTypes,
+  uLanguageKeywords;
 
 type
   TSimpleHighlighter = class

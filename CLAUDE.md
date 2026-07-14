@@ -124,6 +124,19 @@ Restructured as a redistributable component (MIT, see `LICENSE` / `README.md`):
   by any caret action, since all funnel through `ResetCaretBlink` before
   repainting), and `PaintSelection` picks the colour off it — so a find match
   reads differently from a normal selection.
+  - **Theme presets** (`ApplyTheme(etLight | etDark)`): sets all of the editor's
+    own colour surfaces from one curated, **cross-platform-identical** palette in
+    a single call — it deliberately does **not** read the active FMX style (FMX
+    has no colour-token API; a style is a tree of drawables, and the default
+    style differs Win↔mac, which would reintroduce the very divergence this
+    control avoids). `etLight` is the constructor defaults; `etDark` is VS Code
+    Dark+. If a Highlighter already exists it also retunes its syntax colours
+    (keyword/string/comment/number); a hand-written tokenizer with no Highlighter
+    is left alone (checks the `FHighlighter` field, never force-creates one).
+    It's a **method, not a stored property** — a published `Theme` would re-apply
+    on `.fmx` load and clobber hand-set colours (same reasoning as the
+    `Highlighter.Use*` presets). Every colour stays individually overridable
+    after the call.
 - **Current-line highlight** (`HighlightCurrentLine`, default **off**;
   `CurrentLineColor`): a faint full-width band behind the caret's logical line
   (all its wrapped rows), painted *first* in `PaintContent` so everything else

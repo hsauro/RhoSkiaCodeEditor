@@ -118,6 +118,11 @@ type
     CaretAfter: TCaretPos;
   end;
 
+  // Shipped colour palettes for ApplyTheme. Deliberately a short, curated set
+  // (identical on Windows and macOS -- no OS style is consulted). etLight is the
+  // constructor's own defaults; etDark is a VS Code Dark+-style palette.
+  TEditorTheme = (etLight, etDark);
+
   // ITextInput lets the platform (macOS Cocoa, Windows IMM) route IME
   // composition to this control. Committed text still arrives through KeyDown;
   // this interface adds the in-progress "marked" string and candidate-window
@@ -435,6 +440,17 @@ type
     //   Editor.Highlighter.AddKeywords(['unit', 'begin', 'end']);
     // Colours/keywords/rules changed later re-lex automatically.
     function Highlighter: TSimpleHighlighter;
+
+    // Apply a shipped colour palette to the editor's own surfaces (background,
+    // text, gutter, caret, selection, find, current-line, bracket, tooltip) in
+    // one call, so a host doesn't hand-set every colour to match a dark/light
+    // form. Cross-platform-identical -- it does NOT read the active FMX style.
+    // If a Highlighter already exists, its syntax colours are retuned too (a
+    // hand-written tokenizer with no Highlighter is left untouched). Individual
+    // colour properties remain overridable after the call. Not a stored
+    // property on purpose: a published Theme would re-apply on .fmx load and
+    // clobber any colours set by hand -- same reason the presets are methods.
+    procedure ApplyTheme(const ATheme: TEditorTheme);
 
     procedure Undo;
     procedure Redo;
@@ -2086,6 +2102,70 @@ procedure TSkiaCodeEditor.HighlighterChanged(Sender: TObject);
 begin
   // Keywords/rules/colours changed -> everything must be re-lexed.
   InvalidateAllTokens;
+end;
+
+procedure TSkiaCodeEditor.ApplyTheme(const ATheme: TEditorTheme);
+begin
+  // One curated palette per theme, applied through the public colour setters
+  // (each just repaints; the extra redraws are trivial). No OS style is read,
+  // so the result is identical on Windows and macOS.
+  case ATheme of
+    etLight:
+      begin
+        BackgroundColor    := TAlphaColors.White;
+        TextColor          := TAlphaColors.Black;
+        GutterColor        := $FFF0F0F0;
+        GutterTextColor    := $FF808080;
+        GutterLineColor    := $FF808080;
+        CaretColor         := TAlphaColors.Black;
+        SelectionColor     := $400078D7;
+        FindMatchColor     := $A0FF9800;
+        FindHighlightColor := $40FFC107;
+        CurrentLineColor   := $18808080;
+        BracketMatchColor  := $A0A0A0A0;
+        TooltipColor       := $FF2D2D30;
+        TooltipTextColor   := $FFF0F0F0;
+        TooltipBorderColor := $FF6E6E70;
+      end;
+    etDark:
+      begin
+        BackgroundColor    := $FF1E1E1E;   // VS Code Dark+ editor background
+        TextColor          := $FFD4D4D4;
+        GutterColor        := $FF252526;
+        GutterTextColor    := $FF858585;
+        GutterLineColor    := $FF3E3E42;
+        CaretColor         := $FFD4D4D4;   // light caret on a dark surface
+        SelectionColor     := $80264F78;   // translucent VS Code selection blue
+        FindMatchColor     := $A0FF9800;
+        FindHighlightColor := $40FFC107;
+        CurrentLineColor   := $18FFFFFF;   // faint light band (was dark on light)
+        BracketMatchColor  := $A0888888;
+        TooltipColor       := $FF2D2D30;
+        TooltipTextColor   := $FFF0F0F0;
+        TooltipBorderColor := $FF6E6E70;
+      end;
+  end;
+
+  // Retune syntax colours too, but only if a Highlighter already exists -- don't
+  // force-create one (that would install it as the tokenizer over a host's
+  // hand-written TTokenizeLineProc). Its OnChange re-lexes.
+  if FHighlighter <> nil then
+    case ATheme of
+      etLight:
+        begin
+          FHighlighter.KeywordColor := $FF0000FF;
+          FHighlighter.StringColor  := $FFA31515;
+          FHighlighter.CommentColor := $FF008000;
+          FHighlighter.NumberColor  := $FF098658;
+        end;
+      etDark:
+        begin
+          FHighlighter.KeywordColor := $FF569CD6;   // VS Code Dark+ token colours
+          FHighlighter.StringColor  := $FFCE9178;
+          FHighlighter.CommentColor := $FF6A9955;
+          FHighlighter.NumberColor  := $FFB5CEA8;
+        end;
+    end;
 end;
 
 procedure TSkiaCodeEditor.InvalidateAllTokens;

@@ -50630,6 +50630,33 @@ object frmMain: TfrmMain
     Left = 696
     Top = 416
   end
+  object SkiaCodeEditor1: TSkiaCodeEditor
+    Position.X = 216.000000000000000000
+    Position.Y = 280.000000000000000000
+    Size.Width = 320.000000000000000000
+    Size.Height = 200.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 6
+    Lines.Strings = (
+      '')
+    FontSize = 13.000000000000000000
+    FontFamily = 'Consolas'
+    BackgroundColor = claWhite
+    TextColor = claBlack
+    GutterColor = xFFF0F0F0
+    GutterTextColor = claGray
+    GutterLineColor = claGray
+    GutterLineThickness = 1.000000000000000000
+    CaretColor = claBlack
+    SelectionColor = x400078D7
+    FindMatchColor = xA0FF9800
+    FindHighlightColor = x40FFC107
+    CurrentLineColor = x18808080
+    BracketMatchColor = xA0A0A0A0
+    TooltipColor = xFF2D2D30
+    TooltipTextColor = xFFF0F0F0
+    TooltipBorderColor = xFF6E6E70
+  end
   object ImageList1: TImageList
     Source = <
       item
