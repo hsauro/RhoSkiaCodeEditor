@@ -75,8 +75,18 @@ Restructured as a redistributable component (MIT, see `LICENSE` / `README.md`):
   - **Presets** (`UsePascal`, `UseCLike`, `UseAntimony` — Antimony/SBML, both `#`
     and `//` line comments plus `/* */` blocks — `UsePython`, `#` line + `'''`/
     `"""` triple-quote strings modelled as **block comments**) are **methods**
-    that set comment/string **rules only** — keywords stay separate. Kept
-    rules-only for back-compat.
+    that set comment/string rules **and** apply that language's default syntax
+    colours (`ApplyDefaultColors`); they do **not** touch keywords (back-compat).
+    Set colours *after* a preset to override its defaults.
+  - **Per-language colours**: `ApplyDefaultColors(ALang)` is the one place syntax
+    colours are seeded. It sets the shared VS-ish light baseline (`Def*Color`
+    consts) then a `case ALang` for per-language overrides — currently empty
+    branches (each language shares the baseline), so *that* case is where you give
+    e.g. Antimony its own palette. Called from the ctor (`slNone`) and every
+    `Use*`/`Language` selection. There is **no** per-token-per-language colour
+    beyond these four slots — a comment is `CommentColor` in every language.
+    Precedence: constructor/preset defaults → `ApplyTheme` → explicit OI/code
+    assignment (streamed colours always win, since `TAlphaColor` has no `default`).
   - **Design-time / OI properties** (all `published`): `Language`
     (`slNone/slPascal/slCLike/slAntimony/slPython`) is the OI-facing selector —
     its setter runs the matching preset **and** auto-loads that language's

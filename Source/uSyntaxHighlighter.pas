@@ -20,7 +20,9 @@ unit uSyntaxHighlighter;
 interface
 
 uses
-  System.SysUtils, System.Classes, System.UITypes,
+  System.SysUtils, System.Classes,
+  System.UIConsts,
+  System.UITypes,
   System.Generics.Collections,
   uCodeEditorTypes,
   uLanguageKeywords;
@@ -59,6 +61,7 @@ type
     function IsKeyword(const AWord: string): Boolean;
     procedure RebuildKeywordSet;     // FKeywords := built-in language set + extras
     procedure KeywordListChanged(Sender: TObject);
+    procedure ApplyDefaultColors(ALang: TSyntaxLanguage);
     procedure ApplyLanguage;
     procedure SetLanguage(const Value: TSyntaxLanguage);
     function GetKeywords: TStrings;
@@ -88,10 +91,11 @@ type
     // this to drive its comment-toggle command when no prefix is set explicitly.
     function LineComment: string;
 
-    { language presets (each replaces the current comment/string rules). These
-      set RULES ONLY -- they do not touch keywords (back-compat). The published
-      Language property is the richer, OI-facing selector that also loads the
-      matching built-in keyword list. }
+    { language presets: each replaces the comment/string rules and applies that
+      language's default syntax colours (ApplyDefaultColors). They do NOT touch
+      keywords (back-compat -- set those separately, or use the Language property
+      which additionally loads the built-in keyword list). Set colours AFTER a
+      preset to override its defaults. }
     procedure UsePascal;    // // line; { } and (* *) blocks; '...' strings; case-insensitive
     procedure UseCLike;     // // line; /* */ block; "..." strings; case-sensitive
     procedure UseAntimony;  // // and # line; /* */ block; "..." strings; case-sensitive
@@ -121,6 +125,14 @@ type
 
 implementation
 
+const
+  // Baseline (VS-ish light) syntax colours -- the shared default every language
+  // starts from. Per-language overrides live in ApplyDefaultColors.
+  DefKeywordColor = TAlphaColor($FF0000FF);   // blue
+  DefStringColor  = TAlphaColor($FFA31515);   // maroon
+  DefCommentColor = TAlphaColor($FF008000);   // green
+  DefNumberColor  = TAlphaColor($FF098658);   // teal
+
 { TSimpleHighlighter }
 
 constructor TSimpleHighlighter.Create;
@@ -134,12 +146,7 @@ begin
   FStringDelims := '';
   FCaseSensitive := True;
   FLanguage := slNone;
-  // Sensible defaults (VS-ish): keywords blue, strings maroon, comments green,
-  // numbers teal.
-  FKeywordColor := TAlphaColor($FF0000FF);
-  FStringColor  := TAlphaColor($FFA31515);
-  FCommentColor := TAlphaColor($FF008000);
-  FNumberColor  := TAlphaColor($FF098658);
+  ApplyDefaultColors(slNone);   // seed the baseline syntax palette
 end;
 
 destructor TSimpleHighlighter.Destroy;
@@ -247,6 +254,28 @@ begin
   FKeywordList.Assign(Value);   // fires KeywordListChanged
 end;
 
+procedure TSimpleHighlighter.ApplyDefaultColors(ALang: TSyntaxLanguage);
+begin
+  // Each language's default syntax palette. Every language currently starts from
+  // the same VS-ish light baseline; to give one its own look, override its
+  // colours in the matching branch below (e.g. slAntimony). These are applied
+  // whenever a language is selected (Use* preset or the Language property);
+  // OI-set colours, explicit code assignments, and ApplyTheme still override
+  // them afterwards. Set directly (no Changed) -- the caller already notifies.
+  FKeywordColor := DefKeywordColor;
+  FStringColor  := DefStringColor;
+  FCommentColor := DefCommentColor;
+  FNumberColor  := DefNumberColor;
+  case ALang of
+    slPascal:   ;   // override Pascal's colours here
+    slCLike:    ;   // override C-like colours here
+    slAntimony: begin FCommentColor := claLightGreen; FKeywordColor := claCornflowerblue; FNumberColor := claCoral; FStringColor := $FFA31515; end;
+    slPython:   ;   // override Python's colours here
+  else
+    ;               // slNone: baseline only
+  end;
+end;
+
 procedure TSimpleHighlighter.ApplyLanguage;
 begin
   // Rules from the matching preset; built-in keyword list from uLanguageKeywords.
@@ -313,6 +342,7 @@ end;
 procedure TSimpleHighlighter.UsePascal;
 begin
   ClearRules;
+  ApplyDefaultColors(slPascal);
   AddLineComment('//');
   AddBlockComment('{', '}');
   AddBlockComment('(*', '*)');
@@ -323,6 +353,7 @@ end;
 procedure TSimpleHighlighter.UseCLike;
 begin
   ClearRules;
+  ApplyDefaultColors(slCLike);
   AddLineComment('//');
   AddBlockComment('/*', '*/');
   AddStringDelimiter('"');
@@ -334,6 +365,7 @@ begin
   // Antimony (SBML-compatible) accepts both Python-style '#' and C++/Pascal-style
   // '//' line comments, plus C-style '/* ... */' block comments.
   ClearRules;
+  ApplyDefaultColors(slAntimony);
   AddLineComment('//');
   AddLineComment('#');
   AddBlockComment('/*', '*/');
@@ -352,6 +384,7 @@ begin
   // effect, but Tokenize already tests block comments before strings, so a lone
   // ' or " still opens an ordinary string.
   ClearRules;
+  ApplyDefaultColors(slPython);
   AddLineComment('#');
   AddBlockComment(#39#39#39, #39#39#39);   // ''' ... '''
   AddBlockComment('"""', '"""');
