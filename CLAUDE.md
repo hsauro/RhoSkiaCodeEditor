@@ -575,6 +575,15 @@ uninstall the package) to build from the shell.
 
 ## Working notes (read before changing things)
 
+- **The editor sets `ClipChildren := True`** (ctor). FMX does not clip children
+  to the parent by default, so a child positioned past the edge paints over
+  whatever sits beside the control. The built-in find bar lays its buttons out at
+  **fixed X** (Next…Close at x≈258–570), so when the editor is narrowed (a
+  splitter/`TLayout` shrinks it) those buttons would otherwise spill out and
+  appear to float over the neighbouring panel. Clipping cuts them at the editor's
+  edge instead. (Follow-up: the find bar's fixed layout means the right-hand
+  buttons get clipped off when the editor is narrower than ~580 px — a responsive
+  reflow/right-align would make it usable at narrow widths.)
 - **Verify in the running app, not just the build.** Launch the exe and drive it
   with SendKeys + screenshot from PowerShell (enumerate the process's visible
   top-level window; call `SetProcessDPIAware()` or coords are wrong on this

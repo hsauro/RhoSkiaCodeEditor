@@ -127,11 +127,11 @@ begin
   FWholeWord := MakeCheck('Whole word', 438, 47);
   FWholeWord.OnChange := SearchChanged;
 
-  MakeButton('Close', 556, 8, 70, DoClose);
+  MakeButton('Close', 500, 8, 70, DoClose);
 
   FStatus := TLabel.Create(Self);
   FStatus.Parent := Self;
-  FStatus.SetBounds(556, 46, 180, 24);
+  FStatus.SetBounds(540, 46, 180, 24);
   FStatus.StyledSettings := [];
   FStatus.TextSettings.FontColor := TAlphaColors.Silver;
 end;

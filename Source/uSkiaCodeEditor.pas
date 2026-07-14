@@ -766,6 +766,12 @@ begin
 
   CanFocus := True;
   AutoCapture := True;
+  // Clip everything we own to our own bounds. FMX does NOT clip children by
+  // default, so a child positioned past our edge paints over whatever sits
+  // beside us. The built-in find bar lays its buttons out at fixed X; when the
+  // control is narrowed (e.g. a splitter/TLayout shrinks it), those buttons
+  // would otherwise spill out and appear to float over the neighbouring panel.
+  ClipChildren := True;
   Width := 320;    // a sane footprint when dropped from the palette
   Height := 200;
 
