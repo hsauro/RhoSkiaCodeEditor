@@ -79,11 +79,23 @@ type
   TTipLine = uCodeEditorTypes.TTipLine;
   TTipText = uCodeEditorTypes.TTipText;
 
+  // Re-exported so a host can configure the highlighter (Editor.Highlighter.
+  // Language := slPascal; etc.) with only uSkiaCodeEditor in its uses clause.
+  TSimpleHighlighter = uSyntaxHighlighter.TSimpleHighlighter;
+  TSyntaxLanguage    = uSyntaxHighlighter.TSyntaxLanguage;
+
 const
   // A type alias re-exports the type but NOT its enum values, so name them too:
   // a host can then use markers with only uSkiaCodeEditor in its uses clause.
   mkTint     = uCodeEditorTypes.mkTint;
   mkSquiggle = uCodeEditorTypes.mkSquiggle;
+
+  // Same for the language enum's values (see TSyntaxLanguage above).
+  slNone     = uSyntaxHighlighter.slNone;
+  slPascal   = uSyntaxHighlighter.slPascal;
+  slCLike    = uSyntaxHighlighter.slCLike;
+  slAntimony = uSyntaxHighlighter.slAntimony;
+  slPython   = uSyntaxHighlighter.slPython;
 
   // Default monospaced face per platform. Consolas does not exist on macOS, and
   // TSkTypeface.MakeFromName does NOT fail on a missing family -- it silently
@@ -166,7 +178,7 @@ type
     FCaretTimer: TTimer;
     FCaretVisible: Boolean;        // blink phase; only shown while focused
     FTokenizeLine: TTokenizeLineProc;
-    FHighlighter: TSimpleHighlighter;   // owned; created lazily by Highlighter
+    FHighlighter: TSimpleHighlighter;   // owned; created eagerly, published for OI
     FBuiltInFindUI: Boolean;            // Ctrl+F shows the built-in bar vs event
     FFindBar: TFindBar;                 // owned; created lazily on first Ctrl+F
     FLineCommentPrefix: string;         // comment-toggle token; '' => ask Highlighter
@@ -231,6 +243,7 @@ type
     FOnRequestGotoLine: TNotifyEvent;  // user pressed Ctrl/Cmd+G
     FOnRequestFind: TNotifyEvent;      // user pressed Ctrl/Cmd+F
 
+    procedure SetHighlighter(const Value: TSimpleHighlighter);
     function GetLines: TStrings;
     procedure SetLines(const Value: TStrings);
     procedure LinesProxyChanged(Sender: TObject);
@@ -434,13 +447,6 @@ type
     procedure SetTokenizer(const AProc: TTokenizeLineProc);
     procedure InvalidateAllTokens;
 
-    // Built-in configurable syntax highlighter. First access creates one and
-    // installs it as the tokenizer, so a caller can just write, e.g.:
-    //   Editor.Highlighter.UsePascal;
-    //   Editor.Highlighter.AddKeywords(['unit', 'begin', 'end']);
-    // Colours/keywords/rules changed later re-lex automatically.
-    function Highlighter: TSimpleHighlighter;
-
     // Apply a shipped colour palette to the editor's own surfaces (background,
     // text, gutter, caret, selection, find, current-line, bracket, tooltip) in
     // one call, so a host doesn't hand-set every colour to match a dark/light
@@ -560,6 +566,16 @@ type
     // fast path (they go through ApplyReplace) -- reading Lines rebuilds the
     // list from the document on demand. Assigning it replaces all text.
     property Lines: TStrings read GetLines write SetLines;
+
+    // The built-in syntax highlighter, exposed as an expandable node in the
+    // Object Inspector (Language, Keywords, colours, CaseSensitive). Created
+    // eagerly and installed as the tokenizer; default Language = slNone produces
+    // no runs, so an untouched editor shows plain text. Still usable from code
+    // (Editor.Highlighter.UsePascal; ...). A host that installs its own
+    // TTokenizeLineProc via SetTokenizer overrides it. Assigning replaces its
+    // configuration (Assign), which is what the .fmx streamer does on load.
+    property Highlighter: TSimpleHighlighter read FHighlighter
+      write SetHighlighter;
 
     // Font. FontSize is a Single, so it takes no `default` specifier and is
     // always streamed -- harmless, and the alternative (a stored-function) buys
@@ -705,6 +721,13 @@ begin
   FLines := TObjectList<TEditorLine>.Create(True);
   FLinesProxy := TStringList.Create;
   FLinesProxy.OnChange := LinesProxyChanged;
+  // The highlighter is created eagerly (was lazy) so it can be a published,
+  // Object-Inspector-editable sub-object. It is installed as the tokenizer; at
+  // default Language = slNone it emits no runs, so this is visually identical to
+  // an editor with no tokenizer. A host can still override via SetTokenizer.
+  FHighlighter := TSimpleHighlighter.Create;
+  FHighlighter.OnChange := HighlighterChanged;
+  FTokenizeLine := FHighlighter.Tokenize;   // installed directly (FContent not up yet)
   FUndo := TList<TEditAction>.Create;
   FRedo := TList<TEditAction>.Create;
   FMarkers := TList<TEditorMarker>.Create;
@@ -2087,15 +2110,16 @@ begin
   InvalidateAllTokens;
 end;
 
-function TSkiaCodeEditor.Highlighter: TSimpleHighlighter;
+procedure TSkiaCodeEditor.SetHighlighter(const Value: TSimpleHighlighter);
 begin
-  if FHighlighter = nil then
-  begin
-    FHighlighter := TSimpleHighlighter.Create;
-    FHighlighter.OnChange := HighlighterChanged;
-    SetTokenizer(FHighlighter.Tokenize);
-  end;
-  Result := FHighlighter;
+  // The highlighter object itself is owned and permanent; assigning copies the
+  // source's configuration into it (this is the path the .fmx streamer takes on
+  // load) and re-installs it as the tokenizer in case a custom one was set.
+  if Value = FHighlighter then
+    Exit;
+  FHighlighter.Assign(Value);
+  FTokenizeLine := FHighlighter.Tokenize;
+  InvalidateAllTokens;
 end;
 
 procedure TSkiaCodeEditor.HighlighterChanged(Sender: TObject);
@@ -2146,9 +2170,10 @@ begin
       end;
   end;
 
-  // Retune syntax colours too, but only if a Highlighter already exists -- don't
-  // force-create one (that would install it as the tokenizer over a host's
-  // hand-written TTokenizeLineProc). Its OnChange re-lexes.
+  // Retune the highlighter's syntax colours too. It always exists (created
+  // eagerly), but only actually affects the display when it's the active
+  // tokenizer -- a host using its own TTokenizeLineProc is unaffected. Its
+  // OnChange re-lexes.
   if FHighlighter <> nil then
     case ATheme of
       etLight:

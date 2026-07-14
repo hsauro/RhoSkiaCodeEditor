@@ -26,7 +26,14 @@ uses
   uLanguageKeywords;
 
 type
-  TSimpleHighlighter = class
+  // Design-time language selector. Each maps to the like-named Use* preset and
+  // (for the Language property) auto-loads that language's built-in keyword
+  // list. slNone = no comment/string rules and no built-in keywords.
+  TSyntaxLanguage = (slNone, slPascal, slCLike, slAntimony, slPython);
+
+  // TPersistent (not TObject) so the editor can publish it as an expandable
+  // node in the Object Inspector and stream its published config into the .fmx.
+  TSimpleHighlighter = class(TPersistent)
   private
     type
       TBlockComment = record
@@ -44,9 +51,18 @@ type
     FCommentColor: TAlphaColor;
     FNumberColor: TAlphaColor;
     FOnChange: TNotifyEvent;
+    FLanguage: TSyntaxLanguage;
+    FLangKeywords: TArray<string>;   // built-in keywords for FLanguage (not streamed)
+    FKeywordList: TStringList;       // the published Keywords: user's EXTRA words
     procedure Changed;
     function NormalizeWord(const AWord: string): string;
     function IsKeyword(const AWord: string): Boolean;
+    procedure RebuildKeywordSet;     // FKeywords := built-in language set + extras
+    procedure KeywordListChanged(Sender: TObject);
+    procedure ApplyLanguage;
+    procedure SetLanguage(const Value: TSyntaxLanguage);
+    function GetKeywords: TStrings;
+    procedure SetKeywords(const Value: TStrings);
     procedure SetCaseSensitive(const Value: Boolean);
     procedure SetKeywordColor(const Value: TAlphaColor);
     procedure SetStringColor(const Value: TAlphaColor);
@@ -55,8 +71,10 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+    procedure Assign(Source: TPersistent); override;
 
-    { keywords }
+    { keywords -- these operate on the EXTRA (published) keyword list; the
+      language's built-in keywords are added on top automatically. }
     procedure ClearKeywords;
     procedure AddKeyword(const AWord: string);
     procedure AddKeywords(const AWords: array of string);
@@ -70,7 +88,10 @@ type
     // this to drive its comment-toggle command when no prefix is set explicitly.
     function LineComment: string;
 
-    { language presets (each replaces the current comment/string rules) }
+    { language presets (each replaces the current comment/string rules). These
+      set RULES ONLY -- they do not touch keywords (back-compat). The published
+      Language property is the richer, OI-facing selector that also loads the
+      matching built-in keyword list. }
     procedure UsePascal;    // // line; { } and (* *) blocks; '...' strings; case-insensitive
     procedure UseCLike;     // // line; /* */ block; "..." strings; case-sensitive
     procedure UseAntimony;  // // and # line; /* */ block; "..." strings; case-sensitive
@@ -80,13 +101,22 @@ type
     function Tokenize(const ALine: string; AStateIn: TLexState;
       out ARuns: TTokenRunArray): TLexState;
 
-    property CaseSensitive: Boolean read FCaseSensitive write SetCaseSensitive;
+    // Fired whenever configuration changes; the editor wires this to a re-lex.
+    property OnChange: TNotifyEvent read FOnChange write FOnChange;
+  published
+    // Language preset: sets comment/string rules AND loads that language's
+    // built-in keyword list. Keywords below are added on top. slNone clears both.
+    property Language: TSyntaxLanguage read FLanguage write SetLanguage
+      default slNone;
+    // Extra keywords beyond the language's built-in list (one per line in the
+    // OI editor). Merged with the built-in set; case per CaseSensitive.
+    property Keywords: TStrings read GetKeywords write SetKeywords;
+    property CaseSensitive: Boolean read FCaseSensitive write SetCaseSensitive
+      default True;
     property KeywordColor: TAlphaColor read FKeywordColor write SetKeywordColor;
     property StringColor: TAlphaColor read FStringColor write SetStringColor;
     property CommentColor: TAlphaColor read FCommentColor write SetCommentColor;
     property NumberColor: TAlphaColor read FNumberColor write SetNumberColor;
-    // Fired whenever configuration changes; the editor wires this to a re-lex.
-    property OnChange: TNotifyEvent read FOnChange write FOnChange;
   end;
 
 implementation
@@ -99,8 +129,11 @@ begin
   FKeywords := TDictionary<string, Boolean>.Create;
   FLineComments := TList<string>.Create;
   FBlockComments := TList<TBlockComment>.Create;
+  FKeywordList := TStringList.Create;
+  FKeywordList.OnChange := KeywordListChanged;
   FStringDelims := '';
   FCaseSensitive := True;
+  FLanguage := slNone;
   // Sensible defaults (VS-ish): keywords blue, strings maroon, comments green,
   // numbers teal.
   FKeywordColor := TAlphaColor($FF0000FF);
@@ -114,7 +147,28 @@ begin
   FKeywords.Free;
   FLineComments.Free;
   FBlockComments.Free;
+  FKeywordList.Free;
   inherited;
+end;
+
+procedure TSimpleHighlighter.Assign(Source: TPersistent);
+var
+  H: TSimpleHighlighter;
+begin
+  if Source is TSimpleHighlighter then
+  begin
+    H := TSimpleHighlighter(Source);
+    FCaseSensitive := H.FCaseSensitive;
+    FKeywordColor  := H.FKeywordColor;
+    FStringColor   := H.FStringColor;
+    FCommentColor  := H.FCommentColor;
+    FNumberColor   := H.FNumberColor;
+    Language := H.FLanguage;                 // reapplies rules + built-in keywords
+    FKeywordList.Assign(H.FKeywordList);     // fires KeywordListChanged -> rebuild
+    Changed;
+  end
+  else
+    inherited;
 end;
 
 procedure TSimpleHighlighter.Changed;
@@ -136,26 +190,80 @@ begin
   Result := FKeywords.ContainsKey(NormalizeWord(AWord));
 end;
 
+procedure TSimpleHighlighter.RebuildKeywordSet;
+var
+  W: string;
+begin
+  // The lookup set is the language's built-in keywords plus the user's extras,
+  // both normalized to the current casing rule.
+  FKeywords.Clear;
+  for W in FLangKeywords do
+    if W <> '' then
+      FKeywords.AddOrSetValue(NormalizeWord(W), True);
+  for W in FKeywordList do
+    if W <> '' then
+      FKeywords.AddOrSetValue(NormalizeWord(W), True);
+end;
+
+procedure TSimpleHighlighter.KeywordListChanged(Sender: TObject);
+begin
+  // The published Keywords list (user extras) changed -- fold it back in.
+  RebuildKeywordSet;
+  Changed;
+end;
+
 procedure TSimpleHighlighter.ClearKeywords;
 begin
-  FKeywords.Clear;
-  Changed;
+  FKeywordList.Clear;   // clears extras; KeywordListChanged rebuilds + notifies
 end;
 
 procedure TSimpleHighlighter.AddKeyword(const AWord: string);
 begin
   if AWord <> '' then
-    FKeywords.AddOrSetValue(NormalizeWord(AWord), True);
-  Changed;
+    FKeywordList.Add(AWord);   // OnChange rebuilds + notifies
 end;
 
 procedure TSimpleHighlighter.AddKeywords(const AWords: array of string);
 var
   W: string;
 begin
-  for W in AWords do
-    if W <> '' then
-      FKeywords.AddOrSetValue(NormalizeWord(W), True);
+  FKeywordList.BeginUpdate;   // batch: one rebuild + one notify at EndUpdate
+  try
+    for W in AWords do
+      if W <> '' then
+        FKeywordList.Add(W);
+  finally
+    FKeywordList.EndUpdate;
+  end;
+end;
+
+function TSimpleHighlighter.GetKeywords: TStrings;
+begin
+  Result := FKeywordList;
+end;
+
+procedure TSimpleHighlighter.SetKeywords(const Value: TStrings);
+begin
+  FKeywordList.Assign(Value);   // fires KeywordListChanged
+end;
+
+procedure TSimpleHighlighter.ApplyLanguage;
+begin
+  // Rules from the matching preset; built-in keyword list from uLanguageKeywords.
+  case FLanguage of
+    slNone:     begin ClearRules; FLangKeywords := nil; end;
+    slPascal:   begin UsePascal;   FLangKeywords := PascalKeywords; end;
+    slCLike:    begin UseCLike;    FLangKeywords := CKeywords; end;
+    slAntimony: begin UseAntimony; FLangKeywords := AntimonyKeywords; end;
+    slPython:   begin UsePython;   FLangKeywords := PythonKeywords; end;
+  end;
+  RebuildKeywordSet;
+end;
+
+procedure TSimpleHighlighter.SetLanguage(const Value: TSyntaxLanguage);
+begin
+  FLanguage := Value;
+  ApplyLanguage;   // the Use* presets and RebuildKeywordSet already fire Changed
   Changed;
 end;
 
@@ -253,22 +361,12 @@ begin
 end;
 
 procedure TSimpleHighlighter.SetCaseSensitive(const Value: Boolean);
-var
-  Old: TDictionary<string, Boolean>;
-  Pair: TPair<string, Boolean>;
 begin
   if FCaseSensitive = Value then
     Exit;
   FCaseSensitive := Value;
-  // Re-key the existing keywords under the new casing rule.
-  Old := FKeywords;
-  try
-    FKeywords := TDictionary<string, Boolean>.Create;
-    for Pair in Old do
-      FKeywords.AddOrSetValue(NormalizeWord(Pair.Key), True);
-  finally
-    Old.Free;
-  end;
+  // Re-key both built-in and extra keywords under the new casing rule.
+  RebuildKeywordSet;
   Changed;
 end;
 

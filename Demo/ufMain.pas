@@ -59,7 +59,6 @@ type
     StyleBook1: TStyleBook;
     mnuHelp: TMenuItem;
     mnuAbout: TMenuItem;
-    SkiaCodeEditor1: TSkiaCodeEditor;
     procedure FormCreate(Sender: TObject);
     procedure FormShow(Sender: TObject);
     procedure mnuLoad1Click(Sender: TObject);

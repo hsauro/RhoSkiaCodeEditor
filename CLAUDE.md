@@ -65,16 +65,35 @@ Restructured as a redistributable component (MIT, see `LICENSE` / `README.md`):
   implemented (see build-order status below).
 - `uSyntaxHighlighter.pas` — `TSimpleHighlighter`, a configurable ready-made
   tokenizer (comment/string rules, keyword list, colours) so callers don't
-  hand-write a `TTokenizeLineProc`. The editor owns one lazily via the
-  `Highlighter` property (`Editor.Highlighter.UsePascal; ...AddKeywords([...])`);
-  its `OnChange` re-lexes. Standalone-usable too (pass `.Tokenize` to
-  `SetTokenizer`). Block comments are multi-line (state N+1 = inside rule N).
-  Presets: `UsePascal`, `UseCLike`, `UseAntimony` (Antimony/SBML — both `#` and
-  `//` line comments plus `/* */` blocks), `UsePython` (`#` line; `'''`/`"""`
-  triple-quote strings modelled as **block comments** — the engine has no
-  multi-line *string* rule, only block *comments*, so docstrings render
-  comment-coloured). A preset sets comment/string rules only; keywords are added
-  separately with `AddKeywords`.
+  hand-write a `TTokenizeLineProc`. It's a **`TPersistent`** and the editor owns
+  one **eagerly**, published as the expandable `Highlighter` node in the Object
+  Inspector (created in the ctor and installed as the tokenizer; default
+  `Language = slNone` emits no runs, so an untouched editor is plain text). Still
+  driven from code (`Editor.Highlighter.UsePascal; ...AddKeywords([...])`); its
+  `OnChange` re-lexes. Standalone-usable too (pass `.Tokenize` to `SetTokenizer`).
+  Block comments are multi-line (state N+1 = inside rule N).
+  - **Presets** (`UsePascal`, `UseCLike`, `UseAntimony` — Antimony/SBML, both `#`
+    and `//` line comments plus `/* */` blocks — `UsePython`, `#` line + `'''`/
+    `"""` triple-quote strings modelled as **block comments**) are **methods**
+    that set comment/string **rules only** — keywords stay separate. Kept
+    rules-only for back-compat.
+  - **Design-time / OI properties** (all `published`): `Language`
+    (`slNone/slPascal/slCLike/slAntimony/slPython`) is the OI-facing selector —
+    its setter runs the matching preset **and** auto-loads that language's
+    built-in keyword list from `uLanguageKeywords`; `Keywords: TStrings` holds the
+    host's **extra** words on top; `CaseSensitive`; and the four colours
+    (`KeywordColor`/`StringColor`/`CommentColor`/`NumberColor`). The OI can't call
+    methods, which is why `Language` exists as a property alongside the `Use*`
+    methods. `TSyntaxLanguage` + its `sl*` values and `TSimpleHighlighter` are
+    re-exported from `uSkiaCodeEditor` (uses-clause convenience, like `mkTint`).
+  - **Keyword model**: `FKeywords` (the O(1) lookup dict) = the language's
+    built-in list (`FLangKeywords`, not streamed) **∪** the published `Keywords`
+    extras. `RebuildKeywordSet` refolds both under the current casing whenever
+    `Language`, `Keywords`, or `CaseSensitive` changes. `AddKeyword(s)` /
+    `ClearKeywords` now operate on the **extras** list (so they stream and merge);
+    with a code-only `Use*` preset (no `Language`) `FLangKeywords` is empty, so
+    their behaviour is unchanged. Streaming order is safe: `Language` is declared
+    before `Keywords`, so a saved (possibly edited) extras list is applied last.
 - `uLanguageKeywords.pas` — ready-made keyword lists for the presets
   (`PascalKeywords`, `CKeywords`, `AntimonyKeywords`, `PythonKeywords` — each a
   `TArray<string>` const). Data-only, no editor/highlighter dependency, so a
@@ -475,6 +494,23 @@ Done:
     entry per document line, so `TStrings.Text` (trailing break) would grow the
     doc by a blank line each round-trip. Verified: clean build, app launches
     (Loaded path runs on the demo form), no runtime-edit regression.
+
+20. ✅ **Highlighter surfaced in the Object Inspector.** `TSimpleHighlighter`
+    became a `TPersistent`; the editor now creates it **eagerly** (was lazy) and
+    publishes it as the expandable `Highlighter` node — `Language`, `Keywords`,
+    `CaseSensitive`, and the four syntax colours all set at design time and
+    stream into the `.fmx`. Because the OI can't call the `Use*` preset methods,
+    a published `Language` enum runs the preset + auto-loads the language's
+    built-in keyword list (see the Files entry for the keyword model). Editor
+    side: `Highlighter` went from a lazy **function** to a published **property**
+    (`read FHighlighter write SetHighlighter`, `Assign`-based) — existing
+    `Editor.Highlighter.UsePython` code is unchanged. The tokenizer is installed
+    directly in the ctor (`FTokenizeLine := FHighlighter.Tokenize`, before
+    `FContent` exists, so no redraw); default `slNone` produces no runs =
+    identical to the old no-tokenizer default. Verified: no highlighting
+    regression on the demo's code path (`UsePython` + `AddKeywords`), and the new
+    `Language := slPascal` path auto-colours every Pascal keyword with no manual
+    `AddKeywords`. Win32 package compiles (only the `.bpl` write is IDE-locked).
 
 ⚠️ **GUI keystroke automation was unreliable this session** (SendKeys not
 reaching the FMX window despite AttachThreadInput — environmental focus-stealing).
