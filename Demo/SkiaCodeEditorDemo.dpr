@@ -11,6 +11,7 @@ program SkiaCodeEditorDemo;
 uses
   System.StartUpCopy,
   FMX.Forms,
+  FMX.Skia,
   {$IFDEF MACOS}
   Macapi.Foundation,
   Macapi.Helpers,
@@ -21,6 +22,7 @@ uses
 {$R *.res}
 
 begin
+  GlobalUseSkia := True;
   {$IFDEF MACOS}
   // macOS suppresses key auto-repeat for character keys: press-and-hold shows
   // the accent picker instead of repeating. (Navigation keys have no accent

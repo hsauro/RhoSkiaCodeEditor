@@ -210,12 +210,24 @@ type
 
     FModified: Boolean;                // text edited since load / last reset
 
+    // Design-time text: a TStrings facade over the document so the content can
+    // be set in the Object Inspector (the standard multi-line string editor).
+    // It is NOT the master copy -- FLines is. GetLines rebuilds this from the
+    // document on read; changes made to it (OI / host) funnel back through
+    // SetText. FSyncingLines guards the rebuild from re-entering the change path.
+    FLinesProxy: TStringList;
+    FSyncingLines: Boolean;
+
     // events
     FOnCaretChange: TNotifyEvent;      // caret moved or text changed
     FOnChange: TNotifyEvent;           // text mutated (NOT caret moves / load)
     FOnRequestGotoLine: TNotifyEvent;  // user pressed Ctrl/Cmd+G
     FOnRequestFind: TNotifyEvent;      // user pressed Ctrl/Cmd+F
 
+    function GetLines: TStrings;
+    procedure SetLines(const Value: TStrings);
+    procedure LinesProxyChanged(Sender: TObject);
+    procedure SetTextFromProxy;
     procedure RebuildFontMetrics;
     function IsFixedPitch: Boolean;
     procedure UpdateContentSize;
@@ -398,6 +410,7 @@ type
       X, Y: Single); virtual;
     procedure DoEnter; override;
     procedure DoExit; override;
+    procedure Loaded; override;
     procedure Resize; override;
     procedure MouseWheel(Shift: TShiftState; WheelDelta: Integer;
       var Handled: Boolean); override;
@@ -520,6 +533,13 @@ type
     property Width;
 
     property Version: String read FVersion;
+
+    // The document text as a string list, so it can be set in the Object
+    // Inspector (opens the standard multi-line string editor) and streams into
+    // the .fmx. At runtime this mirrors GetText/SetText; typing/edits are the
+    // fast path (they go through ApplyReplace) -- reading Lines rebuilds the
+    // list from the document on demand. Assigning it replaces all text.
+    property Lines: TStrings read GetLines write SetLines;
 
     // Font. FontSize is a Single, so it takes no `default` specifier and is
     // always streamed -- harmless, and the alternative (a stored-function) buys
@@ -656,6 +676,8 @@ begin
   FVersion := _VERSION;
 
   FLines := TObjectList<TEditorLine>.Create(True);
+  FLinesProxy := TStringList.Create;
+  FLinesProxy.OnChange := LinesProxyChanged;
   FUndo := TList<TEditAction>.Create;
   FRedo := TList<TEditAction>.Create;
   FMarkers := TList<TEditorMarker>.Create;
@@ -771,6 +793,7 @@ begin
   FMarkers.Free;
   FUndo.Free;
   FRedo.Free;
+  FLinesProxy.Free;
   FLines.Free;
   inherited;
 end;
@@ -1945,6 +1968,75 @@ begin
   finally
     SB.Free;
   end;
+end;
+
+function TSkiaCodeEditor.GetLines: TStrings;
+var
+  I: Integer;
+begin
+  // Rebuild the facade from the authoritative document on read. FLines is the
+  // master; the proxy just mirrors it for the OI and for host code that reads
+  // .Lines. Guard + BeginUpdate so the mirroring never re-enters SetText.
+  FSyncingLines := True;
+  FLinesProxy.BeginUpdate;
+  try
+    FLinesProxy.Clear;
+    for I := 0 to FLines.Count - 1 do
+      FLinesProxy.Add(FLines[I].Text);
+  finally
+    FLinesProxy.EndUpdate;
+    FSyncingLines := False;
+  end;
+  Result := FLinesProxy;
+end;
+
+procedure TSkiaCodeEditor.SetLines(const Value: TStrings);
+begin
+  // Assigning fires FLinesProxy.OnChange -> LinesProxyChanged -> SetText.
+  FLinesProxy.Assign(Value);
+end;
+
+procedure TSkiaCodeEditor.SetTextFromProxy;
+var
+  SB: TStringBuilder;
+  I: Integer;
+begin
+  // Join with #10 and NO trailing newline: the proxy has exactly one entry per
+  // document line, so TStrings.Text (which appends a break after the last line)
+  // would spuriously grow the document by a blank line each round-trip.
+  SB := TStringBuilder.Create;
+  try
+    for I := 0 to FLinesProxy.Count - 1 do
+    begin
+      SB.Append(FLinesProxy[I]);
+      if I < FLinesProxy.Count - 1 then
+        SB.Append(#10);
+    end;
+    SetText(SB.ToString);
+  finally
+    SB.Free;
+  end;
+end;
+
+procedure TSkiaCodeEditor.LinesProxyChanged(Sender: TObject);
+begin
+  // Fired when the OI editor or host code mutates the list. Ignore changes that
+  // are our own GetLines rebuild, and defer streamed-in changes to Loaded so a
+  // .fmx load applies once (not once per line added by the reader).
+  if FSyncingLines then
+    Exit;
+  if csLoading in ComponentState then
+    Exit;
+  SetTextFromProxy;
+end;
+
+procedure TSkiaCodeEditor.Loaded;
+begin
+  inherited;
+  // Apply Lines streamed from the .fmx (LinesProxyChanged skipped them while
+  // csLoading). Harmless no-op when no Lines were set (proxy empty -> '').
+  if FLinesProxy.Count > 0 then
+    SetTextFromProxy;
 end;
 
 procedure TSkiaCodeEditor.SetTokenizer(const AProc: TTokenizeLineProc);

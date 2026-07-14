@@ -440,6 +440,23 @@ Done:
       stealing blocked the synthetic right-click — but wiring compiles and the
       toggle it calls is verified.
 
+19. ✅ **Design-time `Lines: TStrings` property.** Content can now be set in the
+    Object Inspector (standard multi-line string editor) and streams into the
+    `.fmx`, not only via the runtime-only `SetText`. It's a **facade over the
+    document, not the master copy** — `FLines` stays authoritative. `GetLines`
+    rebuilds an internal `FLinesProxy: TStringList` from `FLines` on read
+    (guarded by `FSyncingLines` + `BeginUpdate` so the rebuild never re-enters
+    the edit path); the proxy's `OnChange` funnels OI/host edits back through
+    `SetTextFromProxy` → `SetText`. Runtime typing is untouched (still the
+    `ApplyReplace` fast path); reading `Lines` is the only O(lines) op and it's
+    on-demand. **Streamed loads apply once in `Loaded`, not per line**:
+    `LinesProxyChanged` early-outs while `csLoading`, and `Loaded` calls
+    `SetTextFromProxy` once (skipped when the proxy is empty). `SetTextFromProxy`
+    joins with `#10` and **no trailing newline** — the proxy has exactly one
+    entry per document line, so `TStrings.Text` (trailing break) would grow the
+    doc by a blank line each round-trip. Verified: clean build, app launches
+    (Loaded path runs on the demo form), no runtime-edit regression.
+
 ⚠️ **GUI keystroke automation was unreliable this session** (SendKeys not
 reaching the FMX window despite AttachThreadInput — environmental focus-stealing).
 Both features were verified *deterministically* instead: drive the feature from a
@@ -523,6 +540,15 @@ uninstall the package) to build from the shell.
 ## Possible next features (backlog)
 
 - (all backlog visual features done — see build-order 16/17.)
+- **LaTeX/TeX built-in support.** Add a `UseLaTeX` preset to `TSimpleHighlighter`
+  (`%` line comments; no block comments; control sequences `\word` as the main
+  token) plus a `LaTeXKeywords` list in `uLanguageKeywords.pas` (common commands /
+  environments: `\begin`, `\end`, `\section`, `\documentclass`, `\usepackage`,
+  `\item`, etc.). Fits the existing preset + keyword-list pattern; the user works
+  in WinEdt, so this is a natural target. Note the tokenizer keys off identifier
+  chars `[A-Za-z_]` — TeX control words start with `\`, so highlighting `\command`
+  as a unit may need a small lexer tweak (treat a leading `\` + letters as one
+  token) rather than just a keyword list.
 - Word-wrap follow-up: `UpdateContentSize` is still O(lines) per edit (fine at
   current scale, but the `FirstRow` running sum is what a production impl would
   maintain incrementally).
