@@ -811,6 +811,9 @@ begin
   FContent.Align := TAlignLayout.Client;  // fills the area left of the scrollbars
   FContent.HitTest := True;               // receive mouse; we forward to editor
   FContent.AutoCapture := True;           // keep getting MouseMove during drag-select
+  // Text cursor over the text area. ContentMouseMove swaps it back to an arrow
+  // while the pointer is over the gutter (which isn't editable text).
+  FContent.Cursor := crIBeam;
   TSkPaintBox(FContent).OnDraw := ContentPaint;
   // The wrap width is FContent's width, and FContent is realigned AFTER our own
   // Resize runs -- so re-flow off the paint surface's resize, not the editor's,
@@ -4335,7 +4338,17 @@ procedure TSkiaCodeEditor.ContentMouseMove(Sender: TObject; Shift: TShiftState;
   X, Y: Single);
 var
   Idx: Integer;
+  WantCursor: TCursor;
 begin
+  // I-beam over the text, plain arrow over the gutter. Assigning only on a
+  // change keeps this off the platform cursor path on every mouse move.
+  if (FGutterWidth > 0) and (X < FGutterWidth) then
+    WantCursor := crArrow
+  else
+    WantCursor := crIBeam;
+  if FContent.Cursor <> WantCursor then
+    FContent.Cursor := WantCursor;
+
   if FMouseSelecting and (ssLeft in Shift) then
   begin
     // Extend the selection: move the caret, leave the anchor fixed.
