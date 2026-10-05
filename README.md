@@ -5,6 +5,8 @@ A memo-like control with a line-number gutter, pluggable syntax highlighting,
 find/replace, word wrap, and error markers — that behaves **identically on
 Windows and macOS**.
 
+This code was developed using a combination of Human effort and AI assistance.
+
 ## Why it exists
 
 FMX's `TMemo` routes through **different presenters per OS**: the FMX-drawn
