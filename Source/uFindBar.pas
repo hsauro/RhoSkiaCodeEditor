@@ -12,6 +12,9 @@ unit uFindBar;
 
   Docked style: the bar is TAlignLayout.Top on the editor, so showing it shifts
   the text down; hiding it gives the space back.
+
+  ShowReplace := False makes it a one-row find bar (no replace box or
+  buttons), for read-only hosts such as a markdown viewer.
 }
 
 interface
@@ -40,6 +43,8 @@ type
     FMatchCase: TCheckBox;
     FWholeWord: TCheckBox;
     FStatus: TLabel;
+    FNext, FPrev, FReplaceBtn, FReplaceAllBtn, FClose: TButton;
+    FShowReplace: Boolean;
     FOnFindNext: TFindFunc;
     FOnFindPrev: TFindFunc;
     FOnReplace: TReplaceFunc;
@@ -55,6 +60,8 @@ type
     procedure DoClose(Sender: TObject);
     procedure SearchKeyDown(Sender: TObject; var Key: Word;
       var KeyChar: WideChar; Shift: TShiftState);
+    procedure SetShowReplace(AValue: Boolean);
+    procedure LayoutControls;
   public
     constructor Create(AOwner: TComponent); override;
     // Show, seed the search box (e.g. with the current selection) and focus it.
@@ -72,6 +79,9 @@ type
     property OnClosed: TProc read FOnClosed write FOnClosed;
     property OnSearchChanged: TSearchChangedProc read FOnSearchChanged
       write FOnSearchChanged;
+    // True (the default): two rows, find and replace. False: one row, find
+    // only; Whole word and the match count move up into it.
+    property ShowReplace: Boolean read FShowReplace write SetShowReplace;
   end;
 
 implementation
@@ -80,60 +90,91 @@ implementation
 
 constructor TFindBar.Create(AOwner: TComponent);
 
-  function MakeButton(const ACaption: string; AX, AY, AW: Single;
-    AClick: TNotifyEvent): TButton;
+  function MakeButton(const ACaption: string; AClick: TNotifyEvent): TButton;
   begin
     Result := TButton.Create(Self);
     Result.Parent := Self;
     Result.Text := ACaption;
-    Result.SetBounds(AX, AY, AW, 28);
     Result.OnClick := AClick;
   end;
 
-  function MakeCheck(const ACaption: string; AX, AY: Single): TCheckBox;
+  function MakeCheck(const ACaption: string): TCheckBox;
   begin
     Result := TCheckBox.Create(Self);
     Result.Parent := Self;
     Result.Text := ACaption;
-    Result.SetBounds(AX, AY, 110, 22);
   end;
 
 begin
   inherited Create(AOwner);
-  Height := 80;
   Stroke.Kind := TBrushKind.None;
   Fill.Color := TAlphaColor($FF2D2D30);
   Visible := False;
+  FShowReplace := True;
 
   FSearch := TEdit.Create(Self);
   FSearch.Parent := Self;
-  FSearch.SetBounds(10, 8, 240, 28);
   FSearch.TextPrompt := 'Find';
   FSearch.OnKeyDown := SearchKeyDown;
   FSearch.OnChangeTracking := SearchChanged;   // highlight live, per keystroke
 
-  MakeButton('Next', 258, 8, 66, DoNext);
-  MakeButton('Prev', 328, 8, 66, DoPrev);
-  FMatchCase := MakeCheck('Match case', 404, 11);
+  FNext := MakeButton('Next', DoNext);
+  FPrev := MakeButton('Prev', DoPrev);
+  FMatchCase := MakeCheck('Match case');
   FMatchCase.OnChange := SearchChanged;        // options change the match set
 
   FReplace := TEdit.Create(Self);
   FReplace.Parent := Self;
-  FReplace.SetBounds(10, 44, 240, 28);
   FReplace.TextPrompt := 'Replace with';
 
-  MakeButton('Replace', 258, 44, 66, DoReplace);
-  MakeButton('Replace All', 328, 44, 100, DoReplaceAll);
-  FWholeWord := MakeCheck('Whole word', 438, 47);
+  FReplaceBtn := MakeButton('Replace', DoReplace);
+  FReplaceAllBtn := MakeButton('Replace All', DoReplaceAll);
+  FWholeWord := MakeCheck('Whole word');
   FWholeWord.OnChange := SearchChanged;
 
-  MakeButton('Close', 500, 8, 70, DoClose);
+  FClose := MakeButton('Close', DoClose);
 
   FStatus := TLabel.Create(Self);
   FStatus.Parent := Self;
-  FStatus.SetBounds(540, 46, 180, 24);
   FStatus.StyledSettings := [];
   FStatus.TextSettings.FontColor := TAlphaColors.Silver;
+  LayoutControls;
+end;
+
+procedure TFindBar.LayoutControls;
+begin
+  FSearch.SetBounds(10, 8, 240, 28);
+  FNext.SetBounds(258, 8, 66, 28);
+  FPrev.SetBounds(328, 8, 66, 28);
+  FMatchCase.SetBounds(404, 11, 110, 22);
+  FReplace.Visible := FShowReplace;
+  FReplaceBtn.Visible := FShowReplace;
+  FReplaceAllBtn.Visible := FShowReplace;
+  if FShowReplace then
+  begin
+    Height := 80;
+    FReplace.SetBounds(10, 44, 240, 28);
+    FReplaceBtn.SetBounds(258, 44, 66, 28);
+    FReplaceAllBtn.SetBounds(328, 44, 100, 28);
+    FWholeWord.SetBounds(438, 47, 110, 22);
+    FClose.SetBounds(500, 8, 70, 28);
+    FStatus.SetBounds(540, 46, 180, 24);
+  end
+  else
+  begin
+    Height := 44;
+    FWholeWord.SetBounds(510, 11, 110, 22);
+    FClose.SetBounds(616, 8, 70, 28);
+    FStatus.SetBounds(696, 10, 180, 24);
+  end;
+end;
+
+procedure TFindBar.SetShowReplace(AValue: Boolean);
+begin
+  if FShowReplace = AValue then
+    Exit;
+  FShowReplace := AValue;
+  LayoutControls;
 end;
 
 procedure TFindBar.Activate(const ASeed: string);
@@ -229,7 +270,10 @@ procedure TFindBar.SearchKeyDown(Sender: TObject; var Key: Word;
 begin
   if Key = vkReturn then
   begin
-    DoNext(Sender);
+    if ssShift in Shift then
+      DoPrev(Sender)
+    else
+      DoNext(Sender);
     Key := 0;
   end
   else if Key = vkEscape then
