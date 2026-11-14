@@ -140,6 +140,16 @@ type
   // this interface adds the in-progress "marked" string and candidate-window
   // placement. Layout/measurement stay 100% Skia -- only text *input* touches
   // native services, as the design allows.
+  // A host-chosen colour for the whole of one line's text (1-based ALine),
+  // overriding the tokenizer's colours; leave AColor as TAlphaColors.Null to
+  // keep them. For logs and output panes, where a line's colour comes from
+  // where it came from (stdout, stderr), not from its text.
+  TLineColorEvent = procedure(Sender: TObject; ALine: Integer;
+    var AColor: TAlphaColor) of object;
+  // A click on the text (press and release without dragging out a selection),
+  // at the 1-based line and column it put the caret on.
+  TLineClickEvent = procedure(Sender: TObject; ALine, ACol: Integer) of object;
+
   TSkiaCodeEditor = class(TControl, ITextInput)
   private
     FVersion: String;
@@ -242,6 +252,9 @@ type
     FOnChange: TNotifyEvent;           // text mutated (NOT caret moves / load)
     FOnRequestGotoLine: TNotifyEvent;  // user pressed Ctrl/Cmd+G
     FOnRequestFind: TNotifyEvent;      // user pressed Ctrl/Cmd+F
+    FOnLineColor: TLineColorEvent;     // host colour for a whole line
+    FOnLineClick: TLineClickEvent;     // click (no drag) on the text
+    FReadOnly: Boolean;                // the user cannot change the text
 
     procedure SetHighlighter(const Value: TSimpleHighlighter);
     function GetLines: TStrings;
@@ -476,6 +489,21 @@ type
 
     procedure ShowBuiltInFindBar;
 
+    // ---- host-side text changes, for logs and output panes ----
+    // None of these records undo, moves the caret or selection (beyond keeping
+    // them on the text that stays), or counts as a user edit (no OnChange, no
+    // Modified); they work when ReadOnly is set.
+    // Appends S at the end of the document; newlines in S start new lines.
+    procedure AppendText(const S: string);
+    // Removes ACount whole lines from line AFirst (1-based) on, e.g. the
+    // oldest lines of a log. Markers on them go; later markers move up.
+    procedure DeleteLines(AFirst, ACount: Integer);
+    // Scrolls to the last line (and the left edge), without moving the caret.
+    procedure ScrollToEnd;
+    // Whether the view shows the last line: a log follows new text only then,
+    // so it does not pull away a user who scrolled up to read.
+    function IsScrolledToEnd: Boolean;
+
     // navigation
     function LineCount: Integer;
     procedure GoToLine(ALine: Integer);   // 1-based; caret to line start, centered
@@ -612,6 +640,12 @@ type
     // moment the document changes. Set False to manage their lifetime yourself.
     property MarkersClearOnEdit: Boolean read FMarkersClearOnEdit
       write FMarkersClearOnEdit default True;
+    // When True, the user can move the caret, select, copy, find and scroll,
+    // but not change the text: typing, paste, cut, delete, undo/redo, comment
+    // toggling and replace are ignored, and the context menu and find bar
+    // offer only what still applies. SetText, AppendText and DeleteLines
+    // still work, for the host.
+    property ReadOnly: Boolean read FReadOnly write FReadOnly default False;
 
     // colours (ARGB TAlphaColor). Token colours come from the tokenizer /
     // Highlighter; these are the editor's own surfaces. No `default` specifier:
@@ -673,6 +707,9 @@ type
       write FOnRequestGotoLine;
     // Fired when the user presses Ctrl/Cmd+F; the host shows its find UI.
     property OnRequestFind: TNotifyEvent read FOnRequestFind write FOnRequestFind;
+    // See TLineColorEvent and TLineClickEvent.
+    property OnLineColor: TLineColorEvent read FOnLineColor write FOnLineColor;
+    property OnLineClick: TLineClickEvent read FOnLineClick write FOnLineClick;
   end;
 
 implementation
@@ -1934,6 +1971,7 @@ begin
           SetFocus;
       end;
   end;
+  FFindBar.ShowReplace := not FReadOnly;   // a read-only editor only finds
   FFindBar.ApplyTheme(FGutterBackColor, FTextColor);
   FFindBar.Activate(SelText);
 end;
@@ -2187,17 +2225,21 @@ begin
     case ATheme of
       etLight:
         begin
-          FHighlighter.KeywordColor := $FF0000FF;
-          FHighlighter.StringColor  := $FFA31515;
-          FHighlighter.CommentColor := $FF008000;
-          FHighlighter.NumberColor  := $FF098658;
+          FHighlighter.KeywordColor     := $FF0000FF;
+          FHighlighter.StringColor      := $FFA31515;
+          FHighlighter.CommentColor     := $FF008000;
+          FHighlighter.NumberColor      := $FF098658;
+          FHighlighter.MetadataColor    := $FF57606A;
+          FHighlighter.MetadataTagColor := $FF795E26;
         end;
       etDark:
         begin
-          FHighlighter.KeywordColor := $FF569CD6;   // VS Code Dark+ token colours
-          FHighlighter.StringColor  := $FFCE9178;
-          FHighlighter.CommentColor := $FF6A9955;
-          FHighlighter.NumberColor  := $FFB5CEA8;
+          FHighlighter.KeywordColor     := $FF569CD6;   // VS Code Dark+ token colours
+          FHighlighter.StringColor      := $FFCE9178;
+          FHighlighter.CommentColor     := $FF6A9955;
+          FHighlighter.NumberColor      := $FFB5CEA8;
+          FHighlighter.MetadataColor    := $FF9DA5B4;
+          FHighlighter.MetadataTagColor := $FFDCDCAA;
         end;
     end;
 end;
@@ -2626,6 +2668,7 @@ begin
   // Squiggles go OVER the glyphs -- they sit below the baseline, and drawing
   // them under the text would let descenders hide them.
   PaintMarkers(ACanvas, FirstRow, LastRow, mkSquiggle);
+  PaintMarkers(ACanvas, FirstRow, LastRow, mkUnderline);
 
   if FGutterVisible then
     PaintGutter(ACanvas, FirstRow, LastRow);
@@ -2713,6 +2756,11 @@ begin
   begin
     Paint.Style := TSkPaintStyle.Stroke;
     Paint.StrokeWidth := 1.2;
+  end
+  else if AKind = mkUnderline then
+  begin
+    Paint.Style := TSkPaintStyle.Stroke;
+    Paint.StrokeWidth := 1;
   end;
 
   for I := 0 to FMarkers.Count - 1 do
@@ -2734,6 +2782,9 @@ begin
         Continue;
       if AKind = mkTint then
         ACanvas.DrawRect(Rect, Paint)
+      else if AKind = mkUnderline then
+        ACanvas.DrawLine(TPointF.Create(Rect.Left, Rect.Bottom - 2.5),
+          TPointF.Create(Rect.Right, Rect.Bottom - 2.5), Paint)
       else
         PaintSquiggle(ACanvas, Paint, Rect.Left, Rect.Right, Rect.Bottom - 2);
     end;
@@ -2872,6 +2923,7 @@ end;
 procedure TSkiaCodeEditor.PaintRow(const ACanvas: ISkCanvas;
   ALineIdx, ARowInLine: Integer; AY: Single);
 var
+  LineColor: TAlphaColor;
   L: TEditorLine;
   Paint: ISkPaint;
   Metrics: TSkFontMetrics;
@@ -2891,6 +2943,20 @@ begin
   Baseline := AY + (-Metrics.Ascent);
   X := FGutterWidth - FScrollX;   // text origin, shifted by horizontal scroll
   Paint := TSkPaint.Create;
+
+  // A host colour for the whole line (OnLineColor) wins over the tokens.
+  if Assigned(FOnLineColor) then
+  begin
+    LineColor := TAlphaColors.Null;
+    FOnLineColor(Self, ALineIdx + 1, LineColor);
+    if LineColor <> TAlphaColors.Null then
+    begin
+      Paint.Color := LineColor;
+      ACanvas.DrawSimpleText(Copy(L.Text, RS + 1, RE - RS), X, Baseline,
+        FSkFont, Paint);
+      Exit;
+    end;
+  end;
 
   if System.Length(L.Tokens) = 0 then
   begin
@@ -3720,6 +3786,8 @@ var
 begin
   // THE choke point for every text mutation. Records an invertible edit, then
   // performs it. A..B is the (ordered) span being replaced by ANewText.
+  if FReadOnly then
+    Exit;               // typing, paste, delete, replace, comment toggle
   Rec.CaretBefore := FCaret;
   Rec.RangeStart := A;
   Rec.OldText := TextInRange(A, B);
@@ -3787,7 +3855,7 @@ procedure TSkiaCodeEditor.Undo;
 var
   Rec: TEditAction;
 begin
-  if FUndo.Count = 0 then
+  if FReadOnly or (FUndo.Count = 0) then
     Exit;
   Rec := FUndo.Last;
   FUndo.Delete(FUndo.Count - 1);
@@ -3799,7 +3867,7 @@ procedure TSkiaCodeEditor.Redo;
 var
   Rec: TEditAction;
 begin
-  if FRedo.Count = 0 then
+  if FReadOnly or (FRedo.Count = 0) then
     Exit;
   Rec := FRedo.Last;
   FRedo.Delete(FRedo.Count - 1);
@@ -3859,6 +3927,8 @@ end;
 
 procedure TSkiaCodeEditor.CutSelection;
 begin
+  if FReadOnly then
+    Exit;
   if SelActive then
   begin
     CopySelection;
@@ -3900,7 +3970,7 @@ var
   Line: string;
 begin
   Prefix := EffectiveLineComment;
-  if (Prefix = '') or (FLines.Count = 0) then
+  if FReadOnly or (Prefix = '') or (FLines.Count = 0) then
     Exit;
 
   HadSel := SelActive;
@@ -4022,6 +4092,7 @@ procedure TSkiaCodeEditor.EnsureContextMenu;
   begin
     Sep := TMenuItem.Create(FContextMenu);
     Sep.Text := '-';   // FMX renders a '-' item as a separator
+    Sep.Tag := -1 - FContextMenu.ItemsCount;   // never an item's tag
     Sep.Parent := FContextMenu;
   end;
 begin
@@ -4048,10 +4119,19 @@ begin
   HasSel := SelActive;
   CanComment := EffectiveLineComment <> '';
   for I := 0 to FContextMenu.ItemsCount - 1 do
+  begin
     case FContextMenu.Items[I].Tag of
       0, 1: FContextMenu.Items[I].Enabled := HasSel;       // Cut, Copy
       4:    FContextMenu.Items[I].Enabled := CanComment;   // Toggle Comment
     end;
+    // Read-only: only Copy and Select All (and the separator between them).
+    case FContextMenu.Items[I].Tag of
+      0, 2, 4: FContextMenu.Items[I].Visible := not FReadOnly;   // Cut, Paste, Comment
+    else
+      if (FContextMenu.Items[I].Tag < 0) and (I = FContextMenu.ItemsCount - 2) then
+        FContextMenu.Items[I].Visible := not FReadOnly;      // the separator before Comment
+    end;
+  end;
 end;
 
 procedure TSkiaCodeEditor.PopupContextMenu(AX, AY: Single);
@@ -4340,12 +4420,19 @@ var
   Idx: Integer;
   WantCursor: TCursor;
 begin
-  // I-beam over the text, plain arrow over the gutter. Assigning only on a
-  // change keeps this off the platform cursor path on every mouse move.
+  // I-beam over the text, plain arrow over the gutter, a hand over a link
+  // (an mkUnderline marker). Assigning only on a change keeps this off the
+  // platform cursor path on every mouse move.
   if (FGutterWidth > 0) and (X < FGutterWidth) then
     WantCursor := crArrow
   else
     WantCursor := crIBeam;
+  if (FMarkers.Count > 0) and not FMouseSelecting then
+  begin
+    Idx := MarkerAtPoint(TPointF.Create(X, Y));
+    if (Idx >= 0) and (FMarkers[Idx].Kind = mkUnderline) then
+      WantCursor := crHandPoint;
+  end;
   if FContent.Cursor <> WantCursor then
     FContent.Cursor := WantCursor;
 
@@ -4383,6 +4470,108 @@ procedure TSkiaCodeEditor.ContentMouseUp(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Single);
 begin
   FMouseSelecting := False;
+  // A click that did not drag out a selection: tell the host where it landed.
+  if (Button = TMouseButton.mbLeft) and not SelActive and Assigned(FOnLineClick) then
+    FOnLineClick(Self, FCaret.Line + 1, FCaret.Col + 1);
+end;
+
+{ ---- host-side text changes ---- }
+
+procedure TSkiaCodeEditor.AppendText(const S: string);
+var
+  SaveCaret, SaveAnchor: TCaretPos;
+  First, I: Integer;
+begin
+  if S = '' then
+    Exit;
+  SaveCaret := FCaret;
+  SaveAnchor := FSelAnchor;
+  First := FLines.Count - 1;
+  FCaret.Line := First;
+  FCaret.Col := System.Length(FLines[First].Text);
+  InsertRaw(S);
+  // Re-lex the changed last line and the new ones now, in order, so a long
+  // log never leaves a run of unlexed lines for painting to recurse through.
+  for I := First to FLines.Count - 1 do
+    FLines[I].WrapValid := False;
+  RetokenizeAfterEdit(First, FLines.Count - 1);
+  FCaret := SaveCaret;
+  FSelAnchor := SaveAnchor;
+  UpdateContentSize;
+  RedrawContent;
+end;
+
+procedure TSkiaCodeEditor.DeleteLines(AFirst, ACount: Integer);
+var
+  A, B, N, I, RemovedRows: Integer;
+  M: TEditorMarker;
+  NewY: Single;
+
+  // A position on a removed line goes to the start of the line after the
+  // span; one below it moves up.
+  procedure Keep(var P: TCaretPos);
+  begin
+    if P.Line >= B then
+      Dec(P.Line, N)
+    else if P.Line >= A then
+    begin
+      P.Line := Min(A, FLines.Count - 1);
+      P.Col := 0;
+    end;
+  end;
+
+begin
+  A := AFirst - 1;
+  if (A < 0) or (A >= FLines.Count) or (ACount <= 0) then
+    Exit;
+  N := Min(ACount, FLines.Count - A);
+  if N >= FLines.Count then
+  begin
+    SetText('');
+    Exit;
+  end;
+  B := A + N;
+  // Rows the span took (FirstRow is current from the last layout), so a view
+  // below it keeps showing the same text.
+  if B < FLines.Count then
+    RemovedRows := FLines[B].FirstRow - FLines[A].FirstRow
+  else
+    RemovedRows := FTotalRows - FLines[A].FirstRow;
+  NewY := FScrollY;
+  if (B < FLines.Count) and (FLines[B].FirstRow * FLineHeight <= FScrollY) then
+    NewY := Max(0, FScrollY - RemovedRows * FLineHeight);
+  HideTooltip;
+  for I := B - 1 downto A do
+    FLines.Delete(I);
+  Keep(FCaret);
+  Keep(FSelAnchor);
+  for I := FMarkers.Count - 1 downto 0 do
+  begin
+    M := FMarkers[I];
+    if M.Line >= B then
+    begin
+      Dec(M.Line, N);
+      FMarkers[I] := M;
+    end
+    else if M.Line >= A then
+      FMarkers.Delete(I);
+  end;
+  // The line now at A may start in a different lex state.
+  RetokenizeAfterEdit(A, A);
+  UpdateContentSize;
+  SetScrollPos(FScrollX, NewY);
+  RedrawContent;
+end;
+
+procedure TSkiaCodeEditor.ScrollToEnd;
+begin
+  SetScrollPos(0, FContentH);   // clamped to the last full page
+end;
+
+function TSkiaCodeEditor.IsScrolledToEnd: Boolean;
+begin
+  Result := (FContent = nil) or
+    (FScrollY >= FContentH - FContent.Height - FLineHeight);
 end;
 
 procedure TSkiaCodeEditor.KeyDown(var Key: Word; var KeyChar: WideChar;

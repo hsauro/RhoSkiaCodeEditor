@@ -52,7 +52,9 @@ type
   // a single token or a whole line.
   //   mkTint      - translucent rectangle behind the text (like a find hit)
   //   mkSquiggle  - wavy underline beneath the glyphs (like a compiler error)
-  TMarkerKind = (mkTint, mkSquiggle);
+  // mkTint: a band behind the text; mkSquiggle: a wavy underline (errors);
+  // mkUnderline: a straight underline with a hand pointer over it (links).
+  TMarkerKind = (mkTint, mkSquiggle, mkUnderline);
 
   // ---- tooltip content ----
   // A tooltip is a list of lines; each line is a list of coloured runs. This

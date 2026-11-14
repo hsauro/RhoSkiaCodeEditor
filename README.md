@@ -111,6 +111,10 @@ Two conventions run through the whole API:
 | `function GetText: string` | The whole document, lines joined with `#10`. |
 | `function LineCount: Integer` | Number of logical lines (not visual rows). |
 | `function LineText(ALine: Integer): string` | Text of one line, 1-based. `''` if out of range. |
+| `procedure AppendText(const S: string)` | Add text at the end of the document (newlines start new lines; text before the first goes on the last line). For logs and output panes: no undo step, `Modified` and `OnChange` untouched, markers kept, caret and selection left where they were. Works when `ReadOnly` is set. |
+| `procedure DeleteLines(AFirst, ACount: Integer)` | Remove whole lines, 1-based, as `AppendText` adds them (no undo, markers on later lines move up, those on removed lines go). A view below the removed lines keeps showing the same text. Use it to cap a log's length. |
+| `procedure ScrollToEnd` | Scroll to show the last line. |
+| `function IsScrolledToEnd: Boolean` | The last line is in view. Check it before `AppendText` and call `ScrollToEnd` after only if it was, so a reader who scrolled up is not pulled back down. |
 
 ## Modified state / change notification
 
@@ -203,7 +207,8 @@ methods, with Cut/Copy enabled only when there's a selection and Toggle Comment
 only when a comment prefix is available. Right-clicking places the caret when
 there's no selection (so Paste lands where you pointed) and leaves an existing
 selection intact. Set it `False` to suppress it, or assign your own
-`PopupMenu` (the standard `TControl` property) to replace it.
+`PopupMenu` (the standard `TControl` property) to replace it. With `ReadOnly`
+set, the menu shows only **Copy / Select All**.
 
 ## Find and replace
 
@@ -243,7 +248,8 @@ Host-owned annotations — errors, warnings, "look here". **Purely visual: they
 never move the caret or the selection.**
 
 ```pascal
-type TMarkerKind = (mkTint, mkSquiggle);   // rectangle behind text | wavy underline
+type TMarkerKind = (mkTint, mkSquiggle, mkUnderline);
+  // rectangle behind text | wavy underline | straight underline
 ```
 
 | Member | Description |
@@ -256,6 +262,9 @@ type TMarkerKind = (mkTint, mkSquiggle);   // rectangle behind text | wavy under
 | `function MarkerCount: Integer` | |
 | `function MarkerMessageAt(ALine, ACol: Integer): string` | Message of the first marker covering that position, else `''`. Drive a status bar or your own tooltip off this. |
 | `property MarkersClearOnEdit: Boolean` | Default `True`. Any edit drops all markers — they describe text that just changed. `SetText` always drops them. |
+
+An `mkUnderline` marker marks a link: it is drawn as a straight underline and
+the pointer becomes a hand over it. Follow the click with `OnLineClick`.
 
 Out-of-range lines are **ignored, not raised**: a parser reporting a line past
 EOF must not crash the editor.
@@ -390,6 +399,7 @@ Everything is a live setter — no `BeginUpdate`/`EndUpdate` needed.
 
 | Property | Default | Notes |
 |---|---|---|
+| `ReadOnly: Boolean` | `False` | The user cannot change the text: typing, Delete, Cut, Paste, Undo/Redo, Toggle Comment and Replace do nothing; the caret moves, text can be selected, copied and searched (the find bar hides its Replace row, the context menu offers Copy and Select All). `SetText`, `AppendText` and `DeleteLines` still work, for the host. |
 | `BuiltInFindUI: Boolean` | `True` | Ctrl/Cmd+F shows the docked find bar. `False` ⇒ fires `OnRequestFind`. |
 | `HighlightAllMatches: Boolean` | `True` | `False` ⇒ only the current match is highlighted. |
 | `MarkersClearOnEdit: Boolean` | `True` | |
@@ -404,6 +414,8 @@ Everything is a live setter — no `BeginUpdate`/`EndUpdate` needed.
 | `OnChange: TNotifyEvent` | After any text mutation (not caret moves, not load). |
 | `OnRequestGotoLine: TNotifyEvent` | Ctrl/Cmd+G. Show a prompt, then call `GoToLine`. |
 | `OnRequestFind: TNotifyEvent` | Ctrl/Cmd+F, **only** when `BuiltInFindUI = False`. |
+| `OnLineColor: TLineColorEvent` | `procedure(Sender: TObject; ALine: Integer; var AColor: TAlphaColor)`, for each painted line (1-based). Set `AColor` to draw the whole line in that colour instead of the tokenizer's; leave it alone for normal colouring. An output pane colours errors and notes this way. |
+| `OnLineClick: TLineClickEvent` | `procedure(Sender: TObject; ALine, ACol: Integer)`, 1-based, after a left click that selected nothing. Pair it with `mkUnderline` markers to make lines links. |
 
 ## Keyboard
 

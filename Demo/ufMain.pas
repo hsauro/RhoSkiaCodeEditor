@@ -288,7 +288,7 @@ begin
   // keywords, and (optionally) tweak colours. No hand-written scanner.
   //FEditor.Highlighter.UseAntimony;
   //FEditor.Highlighter.AddKeywords(['species', 'compartment', 'model', 'end']);
-  FEditor.Highlighter.UsePython;
+  FEditor.Highlighter.UseAntimony;
   //FEditor.Highlighter.AddKeywords([
   //  'unit', 'interface', 'implementation', 'uses', 'procedure', 'function',
   //  'begin', 'end', 'var', 'const', 'type', 'if', 'then', 'else', 'for', 'to',

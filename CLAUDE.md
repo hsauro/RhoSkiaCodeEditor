@@ -71,7 +71,8 @@ Restructured as a redistributable component (MIT, see `LICENSE` / `README.md`):
   `Language = slNone` emits no runs, so an untouched editor is plain text). Still
   driven from code (`Editor.Highlighter.UsePascal; ...AddKeywords([...])`); its
   `OnChange` re-lexes. Standalone-usable too (pass `.Tokenize` to `SetTokenizer`).
-  Block comments are multi-line (state N+1 = inside rule N).
+  Block comments are multi-line: the **low 16 bits** of `TLexState` hold N+1 =
+  inside block rule N (the high bits carry metadata-comment state, below).
   - **Presets** (`UsePascal`, `UseCLike`, `UseAntimony` — Antimony/SBML, both `#`
     and `//` line comments plus `/* */` blocks — `UsePython`, `#` line + `'''`/
     `"""` triple-quote strings modelled as **block comments**) are **methods**
@@ -84,18 +85,50 @@ Restructured as a redistributable component (MIT, see `LICENSE` / `README.md`):
     branches (each language shares the baseline), so *that* case is where you give
     e.g. Antimony its own palette. Called from the ctor (`slNone`) and every
     `Use*`/`Language` selection. There is **no** per-token-per-language colour
-    beyond these four slots — a comment is `CommentColor` in every language.
+    beyond these six slots — a comment is `CommentColor` in every language.
     Precedence: constructor/preset defaults → `ApplyTheme` → explicit OI/code
     assignment (streamed colours always win, since `TAlphaColor` has no `default`).
   - **Design-time / OI properties** (all `published`): `Language`
     (`slNone/slPascal/slCLike/slAntimony/slPython`) is the OI-facing selector —
     its setter runs the matching preset **and** auto-loads that language's
     built-in keyword list from `uLanguageKeywords`; `Keywords: TStrings` holds the
-    host's **extra** words on top; `CaseSensitive`; and the four colours
-    (`KeywordColor`/`StringColor`/`CommentColor`/`NumberColor`). The OI can't call
+    host's **extra** words on top; `CaseSensitive`; and the six colours
+    (`KeywordColor`/`StringColor`/`CommentColor`/`NumberColor` plus
+    `MetadataColor`/`MetadataTagColor`). The OI can't call
     methods, which is why `Language` exists as a property alongside the `Use*`
     methods. `TSyntaxLanguage` + its `sl*` values and `TSimpleHighlighter` are
     re-exported from `uSkiaCodeEditor` (uses-clause convenience, like `mkTint`).
+  - **Metadata comments** (`MetadataColor` / `MetadataTagColor`, both published):
+    for structured annotations a language has no syntax for, so they live inside
+    comments — Antimony `@simulate` / `@plot` / `@output` directives. A comment
+    whose **first non-space char is `@`** is a metadata comment; inside one the
+    lexer alternates two modes: *between commands* keeps ordinary `CommentColor`
+    (so a `//` note or prose inside the block still reads as a comment), and
+    *inside a command* runs from a `@word` tag (`MetadataTagColor`) through the
+    **matching `}`** of its value (`MetadataColor`). An optional name may follow
+    the tag (`@simulate wt:`) and takes the body colour.
+    - Tracking the closing brace is the whole point — without it the interleaved
+      prose between commands would light up as metadata. Brace **depth** rides in
+      `TLexState`; quoted strings are skipped while counting so a `}` inside
+      `"…"` can't close a command early. That string skip is the **only** inner
+      grammar — the body is otherwise unparsed, so `#1f77b4`, `[S1, S2]` and
+      nested braces all cost nothing and can't be mis-lexed. Deliberate: a real
+      inner grammar was rejected as a second grammar to maintain.
+    - `TLexState` layout is now `lsBlockMask` (low 16 bits, the original
+      "block-comment rule N+1") plus `lsMetaBlock` / `lsMetaPending` /
+      `lsMetaAwait` / an 8-bit depth at `lsMetaDepthShift`. An ordinary block
+      comment still yields exactly the states it always did, so
+      `RetokenizeAfterEdit`'s cascade (equality comparison only) is unaffected.
+    - `lsMetaPending` exists because `/*` usually sits alone on its line: with no
+      content after the opener the decision **defers** to the first line that has
+      some. Once decided the whole comment keeps that status.
+    - **Line comments are single-line**: `// @plot: { y: [S1] }` highlights, but a
+      run of `//` lines does not continue a command. Multi-line metadata uses a
+      block comment. (Continuing across `//` lines would make every leading line
+      comment after an `@` one metadata until the next line of code.)
+    - ⚠️ The unit header of `uSyntaxHighlighter.pas` is a `(* *)` comment, not
+      `{ }` — its examples contain literal braces, which closed a brace comment
+      early and broke the build. Don't convert it back.
   - **Keyword model**: `FKeywords` (the O(1) lookup dict) = the language's
     built-in list (`FLangKeywords`, not streamed) **∪** the published `Keywords`
     extras. `RebuildKeywordSet` refolds both under the current casing whenever
@@ -521,6 +554,19 @@ Done:
     regression on the demo's code path (`UsePython` + `AddKeywords`), and the new
     `Language := slPascal` path auto-colours every Pascal keyword with no manual
     `AddKeywords`. Win32 package compiles (only the `.bpl` write is IDE-locked).
+
+21. ✅ **Metadata comments** (`@command` blocks inside comments; see the
+    highlighter entry in Files for the model, the state layout, and why the
+    closing `}` has to be tracked). Two new published colours,
+    `Highlighter.MetadataColor` / `MetadataTagColor`, also set by `ApplyTheme`.
+    Verified **deterministically** with a throwaway console harness that drives
+    `TSimpleHighlighter.Tokenize` line by line and prints a one-char-per-column
+    colour mask under each line — far better than screenshotting for this,
+    since the question is purely "which run got which colour". Covered: the
+    user's full 50-line Antimony example (tags, names, interleaved `//` prose
+    between commands staying green, `*/` closing cleanly), plus `}` inside a
+    string, nested braces, `@` inside a value, two commands on one line,
+    `/**/`, and a command left unterminated across three lines.
 
 ⚠️ **GUI keystroke automation was unreliable this session** (SendKeys not
 reaching the FMX window despite AttachThreadInput — environmental focus-stealing).
